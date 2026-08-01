@@ -2,13 +2,15 @@
    sw.js — offline shell.
 
    The app is a prototype with no backend, so everything it needs is
-   static. Precache the shell on install; serve it cache-first after
-   that. Fonts come from a CDN, so they get cached on first use.
+   static. It is also under active review, so freshness beats speed:
+   same-origin files are network-first and fall back to the cache
+   only when the network fails. That way a redeploy reaches a phone
+   on the next launch instead of waiting for this file to change.
 
-   Bump CACHE when any shell file changes — the old cache is dropped
-   on activate.
+   Fonts are the exception — they never change, so they stay
+   cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v1';
+const CACHE = 'coach-v2';
 
 const SHELL = [
   './',
@@ -64,14 +66,22 @@ self.addEventListener('fetch', e => {
     return;
   }
 
+  const save = res => {
+    if (res && res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put(req, copy));
+    }
+    return res;
+  };
+
+  /* fonts: cache-first, they never change */
+  if (/fonts\.(googleapis|gstatic)\.com/.test(req.url)) {
+    e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(save)));
+    return;
+  }
+
+  /* everything else: network-first, cache as the offline fallback */
   e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
-      /* stash same-origin assets and the font CDN as they're used */
-      if (res.ok && (req.url.startsWith(self.registration.scope) || /fonts\.(googleapis|gstatic)\.com/.test(req.url))) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
-      }
-      return res;
-    }).catch(() => hit))
+    fetch(req).then(save).catch(() => caches.match(req))
   );
 });
