@@ -1,0 +1,338 @@
+/* ═══════════════════════════════════════════════════════════════
+   data.js — mock world. Everything is generated relative to the
+   real "today" so the prototype never goes stale.
+   ═══════════════════════════════════════════════════════════════ */
+(function () {
+  const CT = (window.CT = window.CT || {});
+
+  /* ── dates ──────────────────────────────────────────────── */
+  const DAY = 86400000;
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const dt = CT.dt = {
+    DAY, DOW,
+    today() { const d = new Date(); d.setHours(0,0,0,0); return d; },
+    parse(s) { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); },
+    iso(d) {
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    },
+    add(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; },
+    addISO(s, n) { return dt.iso(dt.add(dt.parse(s), n)); },
+    monday(d) { const x = new Date(d); const g = (x.getDay()+6)%7; x.setDate(x.getDate()-g); x.setHours(0,0,0,0); return x; },
+    diff(a, b) { return Math.round((dt.parse(a) - dt.parse(b)) / DAY); },
+    dow(s) { return DOW[dt.parse(s).getDay()]; },
+    /* "Tue 28 Jul" */
+    short(s) { const d = dt.parse(s); return DOW[d.getDay()] + ' ' + d.getDate() + ' ' + MON[d.getMonth()]; },
+    /* "28 Jul" */
+    mini(s) { const d = dt.parse(s); return d.getDate() + ' ' + MON[d.getMonth()]; },
+    /* "Jul" */
+    mon(s) { return MON[dt.parse(s).getMonth()]; },
+    /* relative wording used all over the retro-logging UI */
+    relative(s) {
+      const n = dt.diff(dt.iso(dt.today()), s);
+      if (n === 0) return 'today';
+      if (n === 1) return 'yesterday';
+      if (n < 0)   return 'in ' + (-n) + ' days';
+      if (n < 7)   return n + ' days ago';
+      const w = Math.round(n/7);
+      return w === 1 ? 'last week' : w + ' weeks ago';
+    }
+  };
+
+  /* seeded RNG so the mock world is identical on every reload */
+  function rng(seed) {
+    let s = seed >>> 0;
+    return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  /* ── taxonomy ───────────────────────────────────────────── */
+  CT.TYPE = {
+    strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs · 6 × 7 s' },
+    endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity' },
+    pe:        { id:'pe',        label:'Power endurance', short:'Power end.', detail:'Anaerobic · final 3 weeks' }
+  };
+
+  CT.GRIPS = [
+    { id:'tfd',  name:'Three-Finger Drag', short:'3F drag',    edge:'20 mm' },
+    { id:'half', name:'Half-Crimp',        short:'Half-crimp', edge:'20 mm' }
+  ];
+
+  CT.PROTOCOL = { hangSec:7, repsPerGrip:3, reserveSec:2, restSec:180, increment:2.5, cleanTarget:2 };
+
+  CT.MODALITIES = {
+    endurance: [
+      { id:'routes',     name:'Routes',       desc:'Continuous laps on route terrain' },
+      { id:'traverse',   name:'Traversing',   desc:'Low-level, sustained, no rest' },
+      { id:'edgepulls',  name:'Edge Pulls',   desc:'Sub-maximal loaded pulls' },
+      { id:'oneonoff',   name:'1-on-1-off',   desc:'1 minute climbing, 1 minute rest' },
+      { id:'route4x4',   name:'Route 4×4s',   desc:'4 routes × 4 sets' }
+    ],
+    pe: [
+      { id:'boulder4x4', name:'Boulder 4×4s',  desc:'4 problems × 4 sets, minimal rest' },
+      { id:'wallcrawl',  name:'Wall Crawls',   desc:'Long continuous circuits to failure' },
+      { id:'longboulder',name:'Long Problems', desc:'15–25 move linked problems' },
+      { id:'repeaters',  name:'7:3 Repeaters', desc:'7 s on / 3 s off × 6, sub-max' }
+    ]
+  };
+
+  /* field schemas — deliberately first-pass, easy to swap out later */
+  CT.FORMS = {
+    routes:      [ ['grade','Top grade','select','6a,6a+,6b,6b+,6c,6c+,7a,7a+,7b'], ['laps','Laps','number',12], ['duration','Duration','minutes',75], ['rpe','Effort','rpe',6] ],
+    traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','seconds',180], ['restSec','Rest','seconds',180], ['rpe','Effort','rpe',6] ],
+    edgepulls:   [ ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workMin','Time per set','minutes',3], ['rpe','Effort','rpe',5] ],
+    oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','select','5+,6a,6a+,6b,6b+,6c,6c+,7a'], ['rpe','Effort','rpe',6] ],
+    route4x4:    [ ['grade','Route grade','select','6a,6a+,6b,6b+,6c,6c+,7a'], ['sets','Sets','number',4], ['restMin','Rest between sets','minutes',4], ['rpe','Effort','rpe',7] ],
+
+    boulder4x4:  [ ['grade','Problem grade','select','V2,V3,V4,V5,V6,V7'], ['sets','Sets','number',4], ['restMin','Rest between sets','minutes',4], ['rpe','Effort','rpe',8] ],
+    wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','seconds',240], ['restMin','Rest','minutes',5], ['rpe','Effort','rpe',8] ],
+    longboulder: [ ['problems','Problems','number',5], ['moves','Moves each','number',20], ['grade','Grade','select','V2,V3,V4,V5,V6'], ['rpe','Effort','rpe',8] ],
+    repeaters:   [ ['edge','Edge','select','25 mm,20 mm,18 mm'], ['load','Load','kg',8], ['sets','Sets','number',6], ['rpe','Effort','rpe',7] ]
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     World generation
+     ═══════════════════════════════════════════════════════ */
+  const today = dt.today();
+  const todayISO = dt.iso(today);
+  const thisMonday = dt.monday(today);
+
+  let seq = 0;
+  const uid = p => p + '_' + (++seq);
+
+  /* one suggested slot per prescribed session, for every week of the block */
+  function buildSlots(blockStart, weeks, template, peFromWeek) {
+    const slots = [];
+    for (let w = 1; w <= weeks; w++) {
+      const wkStart = dt.addISO(blockStart, (w - 1) * 7);
+      const add = (type, offsets) => (offsets || []).forEach(o =>
+        slots.push({ id: uid('slot'), week: w, type, date: dt.addISO(wkStart, o), status: 'suggested', sessionId: null })
+      );
+      add('strength',  template.strength);
+      add('endurance', template.endurance);
+      if (w >= peFromWeek) add('pe', template.pe);
+    }
+    return slots;
+  }
+
+  const initialsOf = name => name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
+
+  function makeClient(cfg) {
+    const rand = rng(cfg.seed);
+    const blockStart = dt.iso(dt.add(thisMonday, -7 * (cfg.currentWeek - 1)));
+    const blockEnd   = dt.addISO(blockStart, cfg.weeks * 7 - 1);
+    const peFromWeek = cfg.weeks - 2;               // final 3 weeks
+
+    const slots = buildSlots(blockStart, cfg.weeks, cfg.template, peFromWeek);
+
+    /* ── adherence is authored, not rolled: each week is 'full',
+         'partial' (one endurance dropped) or 'poor' (strength plus
+         one endurance dropped). The current week simply completes
+         whatever is already behind today. ── */
+    const sessions = [];
+    for (let w = 1; w <= cfg.weeks; w++) {
+      const mode = cfg.adherence[w - 1] || 'full';
+      const wk = slots.filter(s => s.week === w && s.date < todayISO);
+      const drop = new Set();
+      if (mode === 'partial' || mode === 'poor') {
+        const end = wk.filter(s => s.type === 'endurance');
+        if (end.length) drop.add(end[end.length - 1].id);
+      }
+      if (mode === 'poor') wk.filter(s => s.type === 'strength').forEach(s => drop.add(s.id));
+      wk.forEach(s => s.status = drop.has(s.id) ? 'missed' : 'completed');
+    }
+
+    /* leave one session of the current week open, so there is always
+       something real to log late */
+    if (cfg.currentOpen) {
+      const open = slots.find(s => s.week === cfg.currentWeek && s.type === cfg.currentOpen && s.date < todayISO);
+      if (open) open.status = 'missed';
+    }
+
+    /* ── strength history: authored rep patterns, then the real
+         progression rule run over them so the numbers agree ── */
+    const grip = {
+      tfd:  { weight: cfg.start.tfd,  streak: 0 },
+      half: { weight: cfg.start.half, streak: 0 }
+    };
+    const strengthSlots = slots.filter(s => s.type === 'strength' && s.status === 'completed')
+                               .sort((a,b) => a.date < b.date ? -1 : 1);
+
+    strengthSlots.forEach((slot, i) => {
+      /* patterns are written newest-last, so line them up from the end */
+      const pat = cfg.patterns[i - (strengthSlots.length - cfg.patterns.length)] || cfg.patterns[0];
+      const reps = {}, weights = {};
+      CT.GRIPS.forEach(g => {
+        const k = g.id;
+        weights[k] = grip[k].weight;
+        const r = pat[k].split('').map(ch => ch === '1');
+        reps[k] = r;
+        grip[k].streak = r.every(Boolean) ? grip[k].streak + 1 : 0;
+        if (grip[k].streak >= CT.PROTOCOL.cleanTarget) {
+          grip[k].streak = 0;
+          grip[k].weight += CT.PROTOCOL.increment;
+        }
+      });
+      const ses = { id: uid('ses'), date: slot.date, type: 'strength', weights, reps, notes:'' };
+      sessions.push(ses); slot.sessionId = ses.id;
+    });
+
+    /* ── endurance / PE history ── */
+    slots.filter(s => s.status === 'completed' && s.type !== 'strength').forEach(slot => {
+      const list = CT.MODALITIES[slot.type];
+      const mod = list[Math.floor(rand() * list.length)];
+      const fields = {};
+      CT.FORMS[mod.id].forEach(([key,, kind, def]) => {
+        if (kind === 'select') { const o = String(def).split(','); fields[key] = o[Math.floor(rand()*o.length)]; }
+        else if (kind === 'rpe') fields[key] = Math.max(4, Math.min(10, Math.round(def + (rand()*2-1))));
+        else fields[key] = Math.round(def * (0.85 + rand()*0.3));
+      });
+      const ses = { id: uid('ses'), date: slot.date, type: slot.type, modality: mod.id, fields, notes:'' };
+      sessions.push(ses); slot.sessionId = ses.id;
+    });
+
+    /* ── bodyweight: weekly, mild trend + noise ── */
+    const bodyweight = [];
+    for (let i = cfg.weeks + 4; i >= 0; i--) {
+      const d = dt.iso(dt.add(thisMonday, -7 * i + 1));
+      if (d > todayISO) continue;
+      bodyweight.push({ date: d, kg: +(cfg.bw + cfg.bwTrend * (cfg.weeks + 4 - i) + (rand()-0.5) * 0.55).toFixed(1) });
+    }
+
+    /* ── max hang tests: 5 points, ending near current prescribed load ── */
+    const maxHang = [];
+    for (let i = 4; i >= 0; i--) {
+      const d = dt.iso(dt.add(thisMonday, -21 * i));
+      if (d > todayISO) continue;
+      maxHang.push({
+        date: d,
+        tfd:  +(grip.tfd.weight  - i * 2.2 + (rand()-0.5)).toFixed(1),
+        half: +(grip.half.weight - i * 2.6 + (rand()-0.5)).toFixed(1)
+      });
+    }
+
+    /* ── critical force tests (7:3 repeaters to failure) ── */
+    const criticalForce = [-1, 0].map((k, idx) => {
+      const d = dt.iso(dt.add(thisMonday, -7 * (idx === 0 ? cfg.currentWeek + 7 : cfg.currentWeek - 1)));
+      const mvc = cfg.mvc + idx * cfg.mvcGain;
+      const cf  = +(mvc * (cfg.cfPct + idx * 0.018)).toFixed(1);
+      const curve = [];
+      for (let r = 1; r <= 24; r++) {
+        const decay = Math.exp(-r / 5.2);
+        curve.push(+(cf + (mvc * 0.92 - cf) * decay + (rand()-0.5) * 0.9).toFixed(1));
+      }
+      return {
+        date: d > todayISO ? todayISO : d,
+        mvc: +mvc.toFixed(1),
+        cf,
+        pct: Math.round(cf / mvc * 100),
+        wPrime: Math.round(curve.reduce((a,v) => a + Math.max(0, v - cf) * 7, 0)),
+        curve
+      };
+    });
+
+    return {
+      id: cfg.id, name: cfg.name, full: cfg.full, initials: cfg.initials, role: 'client',
+      block: { start: blockStart, end: blockEnd, weeks: cfg.weeks, peFromWeek },
+      targets: Object.assign({ strength:1, endurance:3, pe:1 }, cfg.targets),
+      template: cfg.template,
+      startLoads: { tfd: cfg.start.tfd, half: cfg.start.half },
+      prescribed: { tfd: grip.tfd.weight, half: grip.half.weight },
+      cleanStreak: { tfd: grip.tfd.streak, half: grip.half.streak },
+      slots, sessions, bodyweight, maxHang, criticalForce,
+      coachNote: cfg.coachNote
+    };
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     Onboarding — a real client, with no history behind them.
+     The days the coach picks are the weekly targets: one slot
+     per prescribed session, so the plan and the target can
+     never disagree.
+     ═══════════════════════════════════════════════════════ */
+  CT.nextMonday = function () {
+    const d = dt.add(thisMonday, 7);
+    return dt.iso(d);
+  };
+
+  CT.createClient = function (input) {
+    const weeks = input.weeks;
+    const peFromWeek = weeks - 2;
+    const blockStart = input.start;
+    const template = input.template;
+
+    let id = input.name.trim().toLowerCase().replace(/[^a-z0-9]/g, '') || 'client';
+    while (CT.world.clients[id]) id += 'x';
+
+    return {
+      id,
+      name: input.name.trim().split(/\s+/)[0],
+      full: input.name.trim(),
+      initials: initialsOf(input.name),
+      role: 'client',
+      block: { start: blockStart, end: dt.addISO(blockStart, weeks * 7 - 1), weeks, peFromWeek },
+      targets: {
+        strength:  template.strength.length,
+        endurance: template.endurance.length,
+        pe:        template.pe.length
+      },
+      template,
+      startLoads:  { tfd: input.loads.tfd,  half: input.loads.half },
+      prescribed:  { tfd: input.loads.tfd,  half: input.loads.half },
+      cleanStreak: { tfd: 0, half: 0 },
+      slots: buildSlots(blockStart, weeks, template, peFromWeek),
+      sessions: [],
+      bodyweight: input.bodyweight ? [{ date: dt.iso(today), kg: input.bodyweight }] : [],
+      maxHang: [],
+      criticalForce: [],
+      coachNote: input.note || '',
+      isNew: true
+    };
+  };
+
+  CT.world = {
+    coach: { id:'coach', name:'Ross', full:'Ross Lewis', initials:'RL', role:'coach' },
+    clients: {
+      /* Maks — final week of an 8-week block, deep in power endurance.
+         Authored so the strength log opens one clean session away from
+         +2.5 kg on the drag and freshly reset on the half-crimp, and so
+         finishing this week lands a 4-week streak. */
+      maks: makeClient({
+        id:'maks', name:'Maks', full:'Maks Nowicki', initials:'MN', seed: 20260401,
+        weeks: 8, currentWeek: 8,
+        template: { strength:[0], endurance:[1,3,5], pe:[4] },
+        adherence: ['full','full','partial','poor','full','full','full','current'],
+        currentOpen: 'endurance',
+        start: { tfd: 15, half: 20 },
+        patterns: [
+          { tfd:'111', half:'111' },   // wk1  drag 1/2 · crimp 1/2
+          { tfd:'111', half:'111' },   // wk2  both earn +2.5
+          { tfd:'110', half:'111' },   // wk3  drag resets
+          { tfd:'111', half:'101' },   // wk5  crimp resets
+          { tfd:'111', half:'111' },   // wk6  drag earns +2.5
+          { tfd:'111', half:'110' }    // wk7  drag at 1/2, crimp reset  ← today's state
+        ],
+        bw: 71.8, bwTrend: -0.11,
+        mvc: 48, mvcGain: 3.4, cfPct: 0.62,
+        coachNote: 'Last week of the block. Hold the load — no chasing numbers now.'
+      }),
+      /* Jade — week 2 of 8, base phase, no PE sessions scheduled yet.
+         Both grips sit at 1 of 2 clean sessions. Her week runs four
+         training days back to back, which the schedule quietly flags. */
+      jade: makeClient({
+        id:'jade', name:'Jade', full:'Jade Ferreira', initials:'JF', seed: 815551,
+        weeks: 8, currentWeek: 2,
+        template: { strength:[1], endurance:[0,2,3], pe:[5] },
+        adherence: ['full','current'],
+        start: { tfd: 7.5, half: 10 },
+        patterns: [
+          { tfd:'101', half:'110' },   // wk1  both reset
+          { tfd:'111', half:'111' }    // wk2  both at 1/2  ← today's state
+        ],
+        bw: 57.4, bwTrend: 0.04,
+        mvc: 33, mvcGain: 2.1, cfPct: 0.58,
+        coachNote: 'Base phase — keep the endurance conversational. Volume over intensity.'
+      })
+    }
+  };
+})();

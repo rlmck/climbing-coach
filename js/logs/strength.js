@@ -1,0 +1,347 @@
+/* ═══════════════════════════════════════════════════════════════
+   logs/strength.js — the priority flow.
+
+   Six hangs: three per grip, seven seconds each, pass or fail.
+   Pass means held clean with two seconds still in reserve.
+   Two clean sessions in a row on a grip earns +2.5 kg; any failed
+   rep resets that grip's counter. Both outcomes are shown the
+   instant the sixth puck is tapped, not after saving.
+
+   This file also owns the sheet shell and the date bar, both of
+   which the endurance / power-endurance logs reuse.
+   ═══════════════════════════════════════════════════════════════ */
+(function () {
+  const CT = window.CT, { el, icon, motion, toast } = CT.ui, S = CT.store, dt = CT.dt;
+
+  /* ═════════════════ sheet shell ═════════════════ */
+  CT.sheet = {
+    open(opts) {
+      CT.sheet.close(true);
+      const scrim = CT.ui.$('#scrim'), hostEl = CT.ui.$('#sheetHost');
+      scrim.hidden = false; hostEl.hidden = false; scrim.style.opacity = 0;
+
+      const sheet = el('div', { class: 'sheet', role: 'document' }, [
+        el('div', { class: 'sheet__hd' }, [
+          el('div', {}, [
+            el('p', { class: 'eyebrow', text: opts.eyebrow }),
+            el('h2', { class: 'sheet__title', style: 'margin-top:6px', text: opts.title }),
+            opts.sub ? el('p', { class: 'sheet__sub', text: opts.sub }) : null
+          ]),
+          el('button', { class: 'sheet__x', 'aria-label': 'Close', onclick: () => CT.sheet.close() }, [ icon('x') ])
+        ]),
+        opts.body,
+        opts.footer
+      ]);
+      hostEl.appendChild(sheet);
+      motion.sheetIn(scrim, sheet);
+
+      scrim.onclick = () => CT.sheet.close();
+      document.addEventListener('keydown', esc);
+      function esc(e) { if (e.key === 'Escape') CT.sheet.close(); }
+      CT.sheet._esc = esc;
+      setTimeout(() => { const f = sheet.querySelector('input,button,select'); f && f.focus({ preventScroll: true }); }, 340);
+      return sheet;
+    },
+    close(instant) {
+      const scrim = CT.ui.$('#scrim'), hostEl = CT.ui.$('#sheetHost');
+      const sheet = hostEl.firstChild;
+      if (CT.sheet._esc) { document.removeEventListener('keydown', CT.sheet._esc); CT.sheet._esc = null; }
+      if (!sheet) { scrim.hidden = true; hostEl.hidden = true; return; }
+      const done = () => { CT.ui.clear(hostEl); scrim.hidden = true; hostEl.hidden = true; };
+      if (instant) done(); else motion.sheetOut(scrim, sheet, done);
+    }
+  };
+
+  /* ═════════════════ delete, with one step of friction ═════════════════
+     No second modal — the button arms itself and disarms after a few
+     seconds if you walk away from it. */
+  CT.deleteButton = function (onConfirm, label) {
+    let armed = false, timer = null;
+    const text = el('span', { text: label || 'Delete' });
+    const btn = el('button', { class: 'btn btn--ghost btn--danger', onclick: () => {
+      if (armed) { clearTimeout(timer); onConfirm(); return; }
+      armed = true;
+      btn.classList.add('is-armed');
+      text.textContent = 'Tap again to confirm';
+      motion.shake(btn);
+      timer = setTimeout(() => {
+        armed = false; btn.classList.remove('is-armed'); text.textContent = label || 'Delete';
+      }, 3500);
+    }}, [ icon('x'), text ]);
+    return btn;
+  };
+
+  /* ═════════════════ date bar — retro logging is first-class ═════════════════ */
+  CT.dateBar = function (c, initial, onChange) {
+    const todayISO = dt.iso(dt.today());
+    const min = c.block.start, max = todayISO;
+    let value = initial && initial >= min && initial <= max ? initial : todayISO;
+
+    const input = el('input', { type: 'date', value, min, max,
+      'aria-label': 'Session date',
+      oninput: e => set(e.target.value || todayISO) });
+
+    const banner = el('div');
+    const quick = el('div', { class: 'quickdates' }, [
+      qb('Today', todayISO), qb('Yesterday', dt.addISO(todayISO, -1))
+    ]);
+
+    function qb(label, iso) {
+      return el('button', { text: label, 'aria-pressed': String(value === iso),
+        onclick: () => { input.value = iso; set(iso); } });
+    }
+
+    /* `silent` on the first paint: callers legitimately build their form
+       after the date bar, so firing onChange during construction would
+       reach into bindings that don't exist yet. */
+    function set(v, silent) {
+      value = v < min ? min : v > max ? max : v;
+      input.value = value;
+      [...quick.children].forEach(b => b.setAttribute('aria-pressed',
+        String(value === (b.textContent === 'Today' ? todayISO : dt.addISO(todayISO, -1)))));
+      CT.ui.clear(banner);
+      if (value !== todayISO) {
+        const b = el('div', { class: 'backdate' }, [
+          icon('clock'),
+          el('p', { html: `Logging for <b>${dt.short(value)}</b> — ${dt.relative(value)}. It lands on that day in your week.` })
+        ]);
+        banner.appendChild(b);
+        motion.pop(b, .96);
+      }
+      if (!silent && onChange) onChange(value);
+    }
+
+    const wrap = el('div', { class: 'stack', style: 'gap:12px' }, [
+      el('div', { class: 'datebar' }, [
+        el('label', { class: 'datepick' }, [ icon('calendar'), input ]),
+        quick,
+        el('span', { class: 'tiny', style: 'margin-left:auto',
+          text: `Block runs ${dt.mini(min)} — ${dt.mini(c.block.end)}` })
+      ]),
+      banner
+    ]);
+    wrap.get = () => value;
+    set(value, true);
+    return wrap;
+  };
+
+  /* ═════════════════ strength log ═════════════════ */
+  CT.views.strengthLog = function (c, opts) {
+    const P = CT.PROTOCOL;
+    const editing = opts.sessionId ? S.session(c, opts.sessionId) : null;
+    const reps = editing
+      ? { tfd: editing.reps.tfd.slice(), half: editing.reps.half.slice() }
+      : { tfd: [null, null, null], half: [null, null, null] };
+    const shown = { tfd: false, half: false };          // is the +2.5 reveal on screen?
+
+    /* declared before the date bar: its first render calls back into refresh() */
+    const gripNodes = {};
+    const dateBar = CT.dateBar(c, editing ? editing.date : opts.date, () => refresh());
+
+    /* When editing, the baseline is the athlete's state with this session
+       taken back out — otherwise the session would be counted twice. */
+    const baseline = S.replay(c, editing ? editing.id : null);
+
+    /* ── one grip channel ── */
+    function gripCard(g, idx) {
+      const base = editing ? { weight: editing.weights[g.id], streak: baseline[g.id].streak }
+                           : baseline[g.id];
+
+      const num  = el('span', { class: 'load__n', text: base.weight.toFixed(1) });
+      const bump = el('div', { class: 'load__bump' }, [ icon('arrowUp'), el('span', { text: `+${P.increment} kg` }) ]);
+      const lbl  = el('p', { class: 'load__lbl', text: 'Prescribed' });
+
+      const pips = el('div', { class: 'pips' },
+        [0, 1].map(i => el('span', { class: 'pip' + (i < base.streak ? ' pip--on' : '') })));
+      const streakTxt = el('span', { class: 'grip__streaktxt', text: `${base.streak}/${P.cleanTarget} clean sessions` });
+
+      const pucks = [0, 1, 2].map(i => {
+        const glyph = el('span', { class: 'rep__glyph' }, [ icon('grip') ]);
+        const label = el('span', { class: 'rep__lbl', text: 'Rep ' + (i + 1) });
+        const flash = el('span', { class: 'rep__flash' });
+        const btn = el('button', {
+          class: 'rep',
+          onclick: () => cycle(g.id, i, btn, glyph, label, flash)
+        }, [ flash, glyph, label ]);
+        paint(btn, glyph, label, g, i, reps[g.id][i]);
+        return btn;
+      });
+
+      const nextTxt = el('span', { class: 'grip__next' });
+
+      const card = el('section', { class: 'grip' }, [
+        el('div', { class: 'grip__hd' }, [
+          el('span', { class: 'grip__idx', text: 'GRIP ' + String(idx + 1).padStart(2, '0') }),
+          el('h3', { class: 'grip__name', text: g.name }),
+          el('span', { class: 'chip', text: g.edge }),
+          el('div', { class: 'grip__streak' }, [ pips, streakTxt ])
+        ]),
+        el('div', { class: 'grip__body' }, [
+          el('div', { class: 'load' }, [
+            el('div', { class: 'load__val' }, [
+              el('span', { class: 'load__sign', text: '+' }), num,
+              el('span', { class: 'load__u', text: 'KG' })
+            ]),
+            lbl, bump
+          ]),
+          el('div', { class: 'reps' }, pucks)
+        ]),
+        el('div', { class: 'grip__foot' }, [
+          icon('info'),
+          el('span', { text: 'Tap a hang to mark it clean · tap again for failed · once more to clear' }),
+          nextTxt
+        ])
+      ]);
+
+      gripNodes[g.id] = { card, num, bump, lbl, pips, streakTxt, pucks, nextTxt, base };
+      return card;
+    }
+
+    /* ── one puck's appearance for a given state ── */
+    function paint(btn, glyph, label, g, i, state) {
+      btn.classList.toggle('rep--pass', state === true);
+      btn.classList.toggle('rep--fail', state === false);
+      CT.ui.clear(glyph).appendChild(icon(state === true ? 'check' : state === false ? 'x' : 'grip'));
+      label.textContent = state === true ? 'Clean' : state === false ? 'Failed' : 'Rep ' + (i + 1);
+      btn.setAttribute('aria-label',
+        `${g.name}, rep ${i + 1}: ${state === true ? 'clean' : state === false ? 'failed' : 'not logged'}`);
+    }
+
+    /* ── pass → fail → clear ── */
+    function cycle(gripId, i, btn, glyph, label, flash) {
+      const cur = reps[gripId][i];
+      const next = cur === null ? true : cur === true ? false : null;
+      reps[gripId][i] = next;
+      paint(btn, glyph, label, CT.GRIPS.find(g => g.id === gripId), i, next);
+
+      if (motion.on) {
+        gsap.fromTo(btn, { scale: .93 }, { scale: 1, duration: .42, ease: 'back.out(3)' });
+        if (next === true) gsap.fromTo(flash, { opacity: .55 }, { opacity: 0, duration: .5, ease: 'power2.out' });
+        if (next === false) motion.shake(btn);
+      }
+      refresh();
+    }
+
+    /* ── recompute every dependent surface ── */
+    function refresh() {
+      if (!gripNodes.tfd) return;              // the date bar can fire before the grips exist
+      let cleanCount = 0, total = 0;
+      CT.GRIPS.forEach(g => {
+        const n = gripNodes[g.id];
+        const p = S.projectGrip(c, g.id, reps[g.id], n.base);
+        reps[g.id].forEach(r => { if (r !== null) total++; if (r === true) cleanCount++; });
+
+        /* streak pips */
+        [...n.pips.children].forEach((pip, i) => {
+          const on = p.earned ? true : i < p.streak;
+          if (on !== pip.classList.contains('pip--on')) {
+            pip.classList.toggle('pip--on', on);
+            if (on) motion.pop(pip, .3);
+          }
+        });
+        n.streakTxt.textContent = `${p.earned ? P.cleanTarget : p.streak}/${P.cleanTarget} clean sessions`;
+
+        /* the reveal */
+        if (p.earned && !shown[g.id]) {
+          shown[g.id] = true;
+          n.card.classList.add('is-armed');
+          n.lbl.textContent = 'Prescribed next session';
+          motion.count(n.num, p.baseWeight, p.weight, { decimals: 1, duration: .85 });
+          if (motion.on) {
+            gsap.fromTo(n.bump, { opacity: 0, y: 8, scale: .85 },
+              { opacity: 1, y: 0, scale: 1, duration: .55, ease: 'back.out(2.4)', delay: .12 });
+            gsap.fromTo(n.card, { boxShadow: '0 0 0 0 rgba(46,94,78,0)' },
+              { boxShadow: '0 0 0 3px rgba(46,94,78,.09)', duration: .5 });
+          } else { n.bump.style.opacity = 1; }
+        } else if (!p.earned && shown[g.id]) {
+          shown[g.id] = false;
+          n.card.classList.remove('is-armed');
+          n.lbl.textContent = 'Prescribed';
+          motion.count(n.num, p.baseWeight + P.increment, p.baseWeight, { decimals: 1, duration: .45 });
+          if (motion.on) gsap.to(n.bump, { opacity: 0, y: 6, duration: .25 });
+          else n.bump.style.opacity = 0;
+          if (p.failed) motion.shake(n.card);
+        }
+
+        n.nextTxt.innerHTML = p.done
+          ? (p.earned ? `Next session &nbsp;<b>+${p.weight.toFixed(1)} kg</b>`
+                      : `Next session &nbsp;<b>+${p.weight.toFixed(1)} kg</b> — hold`)
+          : '';
+      });
+
+      const complete = total === 6;
+      saveBtn.disabled = !complete;
+      const earned = CT.GRIPS.filter(g => shown[g.id]);
+      summary.innerHTML = !complete
+        ? `<b>${total}</b> of 6 hangs logged`
+        : earned.length
+          ? `<b>${cleanCount}/6 clean</b> · +${P.increment} kg on ${earned.map(g => g.short.toLowerCase()).join(' and ')}`
+          : `<b>${cleanCount}/6 clean</b> · load holds next session`;
+    }
+
+    /* ── chrome ── */
+    const summary = el('p', { class: 'sub' });
+    const saveBtn = el('button', { class: 'btn btn--primary', disabled: true, onclick: save },
+      [ icon('check'), editing ? 'Save changes' : 'Save session' ]);
+
+    const body = el('div', { class: 'sheet__bd' }, [
+      dateBar,
+      el('dl', { class: 'proto' }, [
+        el('div', {}, [ el('dt', { text: 'Edge' }),   el('dd', { text: '20 mm' }) ]),
+        el('div', {}, [ el('dt', { text: 'Hang' }),   el('dd', { text: P.hangSec + ' s' }) ]),
+        el('div', {}, [ el('dt', { text: 'Reserve' }),el('dd', { text: P.reserveSec + ' s' }) ]),
+        el('div', {}, [ el('dt', { text: 'Rest' }),   el('dd', { text: P.restSec / 60 + ' min' }) ]),
+        el('div', {}, [ el('dt', { text: 'Reps' }),   el('dd', { text: '3 per grip' }) ])
+      ]),
+      ...CT.GRIPS.map(gripCard),
+      el('div', { class: 'field' }, [
+        el('label', { for: 'sNotes', text: 'Notes' }),
+        el('textarea', { class: 'input', id: 'sNotes', text: editing ? editing.notes : '',
+          placeholder: 'Skin, warm-up, anything worth remembering next time.' })
+      ])
+    ]);
+
+    const footer = el('div', { class: 'sheet__ft' }, [
+      editing ? CT.deleteButton(() => {
+        S.deleteSession(c, editing.id);
+        CT.sheet.close();
+        CT.render(false);
+        toast('Session deleted', 'Loads recalculated from what is left.');
+      }) : null,
+      summary, saveBtn
+    ]);
+
+    function save() {
+      const date = dateBar.get();
+      const weights = {}; CT.GRIPS.forEach(g => weights[g.id] = gripNodes[g.id].base.weight);
+      const earnedGrips = CT.GRIPS.filter(g => shown[g.id]);
+      const notes = CT.ui.$('#sNotes', body).value.trim();
+      const payload = { date, weights, reps: { tfd: reps.tfd.slice(), half: reps.half.slice() }, notes };
+
+      if (editing) {
+        S.updateSession(c, editing.id, payload);
+        CT.sheet.close();
+        CT.render(false);
+        toast('Session updated', dt.short(date) + ' · loads recalculated.');
+        return;
+      }
+
+      const before = S.streak(c);
+      S.logSession(c, Object.assign({ type: 'strength' }, payload));
+      CT.sheet.close();
+      toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date),
+        earnedGrips.length
+          ? `+${P.increment} kg on ${earnedGrips.map(g => g.short.toLowerCase()).join(' and ')} next session.`
+          : 'Load holds next session.');
+      CT.afterLog(c, before);
+    }
+
+    CT.sheet.open({
+      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : 'Strength',
+      title: 'Max hangs',
+      sub: `Six hangs · ${P.hangSec} seconds · pass means ${P.reserveSec} seconds still in reserve`,
+      body, footer
+    });
+    refresh();
+  };
+})();

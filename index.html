@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coach — climbing training</title>
+<meta name="description" content="Coach-prescribed finger strength and endurance training.">
+
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F5F6F6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Coach">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="icon" href="assets/icon-192.png" sizes="192x192">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ───────────────────────── sidebar ───────────────────────── -->
+  <aside class="rail" id="rail">
+    <div class="rail__brand">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 20.5 9.2 6.2a1 1 0 0 1 1.83-.02L14 12.5l2.1-3.8a1 1 0 0 1 1.78.05L21 20.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="rail__wordmark">Coach</span>
+    </div>
+
+    <nav class="rail__nav" id="railNav" aria-label="Main"></nav>
+
+    <div class="rail__log">
+      <p class="eyebrow eyebrow--rail">Quick log</p>
+      <button class="quick" data-log="strength"><span class="quick__dot quick__dot--s"></span>Strength</button>
+      <button class="quick" data-log="endurance"><span class="quick__dot quick__dot--e"></span>Endurance</button>
+      <button class="quick" data-log="pe"><span class="quick__dot quick__dot--p"></span>Power endurance</button>
+    </div>
+
+    <div class="rail__foot">
+      <p class="eyebrow eyebrow--rail">Viewing as</p>
+      <div class="switcher" id="switcher" role="group" aria-label="Switch user"></div>
+      <p class="rail__note">Prototype — mock data, nothing is saved.</p>
+    </div>
+  </aside>
+
+  <!-- ───────────────────────── main ───────────────────────── -->
+  <main class="main" id="main">
+    <header class="topbar" id="topbar"></header>
+    <div class="view" id="view"></div>
+  </main>
+</div>
+
+<!-- phone navigation: hidden at desktop widths -->
+<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+<div class="rail-scrim" id="railScrim" hidden></div>
+
+<!-- sheet host -->
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet-host" id="sheetHost" hidden role="dialog" aria-modal="true" aria-label="Log a session"></div>
+
+<!-- toast host -->
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/Draggable.min.js"></script>
+<script src="vendor/Flip.min.js"></script>
+
+<script src="js/data.js"></script>
+<script src="js/store.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/views/dashboard.js"></script>
+<script src="js/views/schedule.js"></script>
+<script src="js/views/progress.js"></script>
+<script src="js/views/coach.js"></script>
+<script src="js/logs/strength.js"></script>
+<script src="js/logs/session.js"></script>
+<script src="js/logs/onboard.js"></script>
+<script src="js/app.js"></script>
+
+<script>
+  /* Service workers need a real origin — skip it when opened from file:// */
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
+</body>
+</html>
