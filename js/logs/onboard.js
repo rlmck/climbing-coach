@@ -57,7 +57,7 @@
     const rows = [
       dayRow('strength',  'Strength',        'Max hangs. Two rest days between if you run more than one.'),
       dayRow('endurance', 'Endurance',       'The volume that carries the block.'),
-      dayRow('pe',        'Power endurance', 'Only scheduled in the final three weeks.')
+      dayRow('pe',        'Power Endurance', 'Only scheduled in the final three weeks.')
     ];
 
     function field(label, control, hint) {
@@ -98,7 +98,7 @@
 
       const t = form.template;
       const peFrom = form.weeks - 2;
-      phaseNote.textContent = `Base phase for weeks 1 to ${peFrom - 1}. Power endurance opens in week ${peFrom} and runs to the end.`;
+      phaseNote.textContent = `Base phase for weeks 1 to ${peFrom - 1}. Power Endurance opens in week ${peFrom} and runs to the end.`;
 
       const valid = form.name.trim().length > 1 && t.strength.length > 0 && t.endurance.length > 0;
       saveBtn.disabled = !valid;
@@ -107,7 +107,7 @@
       summary.textContent = !form.name.trim() ? 'Give them a name to finish'
         : !t.strength.length ? 'Pick at least one strength day'
         : !t.endurance.length ? 'Pick at least one endurance day'
-        : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once power endurance opens`;
+        : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
     }
 
     function create() {

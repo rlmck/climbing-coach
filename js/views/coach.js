@@ -64,7 +64,7 @@
     const rows = [
       ['strength',  'Strength',        'Max hangs — one per week is the floor'],
       ['endurance', 'Endurance',       'Aerobic volume across the week'],
-      ['pe',        'Power endurance', 'Only scheduled in the final 3 weeks']
+      ['pe',        'Power Endurance', 'Only scheduled in the final 3 weeks']
     ];
 
     const body = el('div', { class: 'card__bd' }, rows.map(([key, name, desc]) => {
@@ -113,6 +113,6 @@
   function summaryText(c) {
     const t = c.targets;
     const total = t.strength + t.endurance;
-    return `A complete week is ${total} sessions in the base phase, ${total + t.pe} once power endurance opens in week ${c.block.peFromWeek}.`;
+    return `A complete week is ${total} sessions in the base phase, ${total + t.pe} once Power Endurance opens in week ${c.block.peFromWeek}.`;
   }
 })();

@@ -520,14 +520,17 @@ input[type=range]::-moz-range-thumb{
 /* ═══════════════════════════════════════════════════════════
    Sheet (log flows)
    ═══════════════════════════════════════════════════════════ */
+/* Stacking order, highest last. The sheet layer must clear the phone tab
+   bar (100) — below it, a bottom-aligned sheet loses its last row behind
+   the bar, and the bar stays tappable through the scrim. */
 .scrim{
-  position:fixed; inset:0; z-index:80;
+  position:fixed; inset:0; z-index:120;
   background:rgba(16,18,20,.26);
   backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
   opacity:0;
 }
 .sheet-host{
-  position:fixed; inset:0; z-index:90;
+  position:fixed; inset:0; z-index:130;
   display:flex; align-items:flex-start; justify-content:center;
   padding:44px 20px; overflow-y:auto;
   pointer-events:none;
@@ -726,7 +729,7 @@ input[type=range]::-moz-range-thumb{
    ═══════════════════════════════════════════════════════════ */
 .toasts{
   position:fixed; bottom:26px; left:50%; transform:translateX(-50%);
-  z-index:120; display:flex; flex-direction:column; gap:9px; align-items:center;
+  z-index:140; display:flex; flex-direction:column; gap:9px; align-items:center;
   pointer-events:none;
 }
 .toast{
@@ -742,7 +745,7 @@ input[type=range]::-moz-range-thumb{
 
 /* milestone — quiet confidence, no confetti */
 .milestone{
-  position:fixed; inset:0; z-index:130; display:grid; place-items:center;
+  position:fixed; inset:0; z-index:150; display:grid; place-items:center;
   pointer-events:none;
 }
 .milestone__card{
@@ -832,22 +835,30 @@ input[type=range]::-moz-range-thumb{
   .tab--log svg{ width:20px; height:20px; }
   .tab--log:active{ transform:scale(.94); }
 
-  /* sheets sit on the bottom edge and can be thumbed */
-  .sheet-host{ padding:0; align-items:flex-end; }
+  /* Sheets sit on the bottom edge. The sheet itself is capped and the
+     body is the only scroller — header and footer stay put. `min-height:0`
+     on both is load-bearing: without it a flex child refuses to shrink
+     below its content, the sheet grows past its cap, and the bottom of
+     the form ends up off-screen with no way to reach it. */
+  .sheet-host{ padding:0; align-items:flex-end; overflow:hidden; }
   .sheet{
     max-width:none; border-radius:22px 22px 0 0;
-    max-height:94dvh; display:flex; flex-direction:column;
+    max-height:92dvh; max-height:92svh;
+    display:flex; flex-direction:column; min-height:0;
   }
-  .sheet__hd{ padding:18px 18px 15px; position:sticky; top:0; background:var(--surface); z-index:2; }
+  .sheet__hd{ padding:22px 18px 15px; flex:0 0 auto; position:relative; }
   .sheet__hd::before{
-    content:""; position:absolute; top:7px; left:50%; transform:translateX(-50%);
+    content:""; position:absolute; top:8px; left:50%; transform:translateX(-50%);
     width:34px; height:4px; border-radius:2px; background:var(--line-2);
   }
   .sheet__title{ font-size:18px; }
-  .sheet__bd{ padding:18px; overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
+  .sheet__bd{
+    padding:18px; flex:1 1 auto; min-height:0;
+    overflow-y:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  }
   .sheet__ft{
     padding:13px 18px calc(13px + env(safe-area-inset-bottom));
-    flex-wrap:wrap; gap:9px; position:sticky; bottom:0;
+    flex:0 0 auto; flex-wrap:wrap; gap:9px;
   }
   .sheet__ft .sub{ order:3; width:100%; }
   .sheet__ft .btn--primary{ flex:1; }

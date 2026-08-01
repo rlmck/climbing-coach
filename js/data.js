@@ -50,7 +50,7 @@
   CT.TYPE = {
     strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs · 6 × 7 s' },
     endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity' },
-    pe:        { id:'pe',        label:'Power endurance', short:'Power end.', detail:'Anaerobic · final 3 weeks' }
+    pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic · final 3 weeks' }
   };
 
   CT.GRIPS = [

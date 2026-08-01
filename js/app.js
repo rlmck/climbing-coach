@@ -14,6 +14,8 @@
   /* ── navigation ─────────────────────────────────────────── */
   CT.go = function (route) {
     if (ROUTES[route] && ROUTES[route].coachOnly && !S.isCoach()) route = 'dashboard';
+    /* changing page abandons whatever was open on top of it */
+    if (CT.sheet) CT.sheet.close(true);
     CT.state.route = route;
     if (route === 'schedule') CT.state.weekOffset = 0;
     render();
@@ -193,10 +195,17 @@
 
     render(false);
 
-    /* first paint: the shell settles, then the content arrives */
+    /* First paint: the shell settles, then the content arrives.
+       The rail is skipped on phones — there it's a drawer whose open and
+       closed states are CSS transforms, and an inline transform left by a
+       tween would outrank them and strand it off-screen. */
     if (motion.on) {
-      gsap.from('.rail', { x: -14, opacity: 0, duration: .6, ease: 'power3.out' });
-      gsap.from('.topbar > *', { y: -8, opacity: 0, duration: .5, stagger: .05, ease: 'power3.out', delay: .1 });
+      const phone = window.matchMedia('(max-width: 900px)').matches;
+      if (!phone) {
+        gsap.from('.rail', { x: -14, opacity: 0, duration: .6, ease: 'power3.out', clearProps: 'transform,opacity' });
+      }
+      gsap.from('.topbar > *', { y: -8, opacity: 0, duration: .5, stagger: .05,
+        ease: 'power3.out', delay: .1, clearProps: 'transform,opacity' });
     }
   }
 

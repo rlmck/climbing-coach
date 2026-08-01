@@ -30,7 +30,7 @@
       el('div', { class: 'ribbon' }, weeks),
       el('div', { class: 'ribbon__legend' }, [
         el('span', {}, [ el('i', { style: 'background:var(--ink-4)' }), 'Base' ]),
-        el('span', {}, [ el('i', { style: 'background:#DCB08A' }), 'Power endurance · final 3 weeks' ]),
+        el('span', {}, [ el('i', { style: 'background:#DCB08A' }), 'Power Endurance · final 3 weeks' ]),
         el('span', {}, [ el('i', { style: 'background:var(--spruce)' }), 'This week' ])
       ])
     ]);
@@ -64,7 +64,7 @@
           el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }),
           el('p', { class: 'tiny', text: phase === 'Power Endurance'
             ? 'Sharpening phase — hold strength, add intensity.'
-            : `Power endurance opens in week ${c.block.peFromWeek}.` })
+            : `Power Endurance opens in week ${c.block.peFromWeek}.` })
         ])
       ]),
       ribbon(c)
@@ -181,8 +181,8 @@
         el('div', {}, [
           el('h3', { class: 'h-card', text: 'This week' }),
           el('p', { class: 'sub', style: 'margin-top:2px',
-            text: `Target ${c.targets.strength} strength · ${c.targets.endurance} endurance` +
-                  (S.inPEPhase(c) ? ` · ${c.targets.pe} power endurance` : '') })
+            text: `Target ${c.targets.strength} Strength · ${c.targets.endurance} Endurance` +
+                  (S.inPEPhase(c) ? ` · ${c.targets.pe} Power Endurance` : '') })
         ]),
         el('span', { class: 'card__act chip ' + (wp.hit ? 'chip--spruce' : ''),
                      text: `${wp.have} / ${wp.need} done` })
@@ -191,7 +191,7 @@
         el('div', { class: 'empty' }, [ el('h3', { text: 'Nothing scheduled this week' }) ])
       ]),
       !S.inPEPhase(c) ? el('p', { class: 'tiny', style: 'padding:13px 20px;border-top:1px solid var(--line)',
-        text: `Power endurance sessions are held back until week ${c.block.peFromWeek} — the final 3 weeks of the block.` }) : null
+        text: `Power Endurance sessions are held back until week ${c.block.peFromWeek} — the final 3 weeks of the block.` }) : null
     ]);
   }
 
@@ -214,7 +214,7 @@
       b('strength', 'Strength', '6 hangs · 7 s · pass or fail'),
       b('endurance', 'Endurance', 'Routes, traversing, edge pulls…')
     ];
-    if (S.inPEPhase(c)) cards.push(b('pe', 'Power endurance', '4×4s, wall crawls, repeaters'));
+    if (S.inPEPhase(c)) cards.push(b('pe', 'Power Endurance', '4×4s, wall crawls, repeaters'));
 
     return el('div', { class: 'grid', style: `grid-template-columns:repeat(${cards.length},1fr)` }, cards);
   }

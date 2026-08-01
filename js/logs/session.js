@@ -15,7 +15,7 @@
     const kinds = [
       ['strength',  'Strength',        'Six max hangs, seven seconds, pass or fail'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
-      ['pe',        'Power endurance', 'Boulder 4×4s, wall crawls, repeaters']
+      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
     ].filter(([id]) => id !== 'pe' || S.inPEPhase(c));
 
     const body = el('div', { class: 'sheet__bd' }, [
@@ -29,7 +29,7 @@
         ])
       )),
       !S.inPEPhase(c)
-        ? el('p', { class: 'tiny', text: `Power endurance opens in week ${c.block.peFromWeek}, the final three of the block.` })
+        ? el('p', { class: 'tiny', text: `Power Endurance opens in week ${c.block.peFromWeek}, the final three of the block.` })
         : null
     ]);
 
@@ -220,7 +220,7 @@
 
     CT.sheet.open({
       eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : T.label,
-      title: type === 'pe' ? 'Power endurance' : 'Endurance',
+      title: type === 'pe' ? 'Power Endurance' : 'Endurance',
       sub: type === 'pe'
         ? 'Anaerobic work — scheduled in the final three weeks of the block'
         : 'Aerobic capacity — the volume that carries the block',

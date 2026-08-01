@@ -152,9 +152,10 @@
     ]);
     host.appendChild(t);
     const kill = () => t.remove();
-    if (!ON) { setTimeout(kill, 2600); return; }
-    G.fromTo(t, { y: 18, opacity: 0, scale: .95 }, { y: 0, opacity: 1, scale: 1, duration: .45, ease: 'back.out(1.7)' });
-    G.to(t, { y: 10, opacity: 0, duration: .3, delay: 2.9, ease: 'power2.in', onComplete: kill });
+    const HOLD = 1.5;                       // seconds on screen before it starts leaving
+    if (!ON) { setTimeout(kill, HOLD * 1000 + 250); return; }
+    G.fromTo(t, { y: 18, opacity: 0, scale: .95 }, { y: 0, opacity: 1, scale: 1, duration: .38, ease: 'back.out(1.7)' });
+    G.to(t, { y: 10, opacity: 0, duration: .25, delay: HOLD, ease: 'power2.in', onComplete: kill });
   }
 
   /* ── milestone — quiet, brief, no confetti ───────────────── */
