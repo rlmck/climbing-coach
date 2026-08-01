@@ -532,6 +532,8 @@ input[type=range]::-moz-range-thumb{
   padding:44px 20px; overflow-y:auto;
   pointer-events:none;
 }
+/* the `display` above outranks the UA's [hidden] rule, so restore it here */
+.sheet-host[hidden], .scrim[hidden]{ display:none; }
 .sheet{
   width:100%; max-width:780px;
   background:var(--surface);
@@ -786,7 +788,9 @@ input[type=range]::-moz-range-thumb{
     padding-top:max(20px, env(safe-area-inset-top));
   }
   .rail.is-open{ transform:none; }
-  .rail-scrim{
+  /* :not([hidden]) is load-bearing — a bare `display` here would outrank
+     the UA's [hidden] rule and pin an invisible blur over the whole app */
+  .rail-scrim:not([hidden]){
     display:block; position:fixed; inset:0; z-index:105;
     background:rgba(16,18,20,.24);
     backdrop-filter:blur(2px); -webkit-backdrop-filter:blur(2px);
