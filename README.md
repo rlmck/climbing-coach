@@ -52,7 +52,18 @@ dashboard has a missed session with a "Log it late" button.
 press ← / →. Double-click to log it. Rest-day guidance appears inline
 underneath and never blocks the move: drop a second Strength session
 within two days of the first, or bunch four training days together, and
-it says so. Jade's default week already trips one.
+it says so. Jade's default week already trips one. Guidance about days
+that have already been trained through stays quiet — there's nothing left
+to act on.
+
+A day holds **two sessions at most**. Drag a third onto a full day and it
+goes red and refuses. The cap governs planning only: logging what you
+actually did is never blocked by it.
+
+The `+` on a day reads the calendar. Today or earlier, it logs — the
+session either happened or it didn't. A **future** day plans instead:
+pick the kind of session and it lands as a suggested placeholder, to be
+logged on the day itself.
 
 **Streak** — completing the current week's targets extends it. Maks is on
 3; finishing week 8 lands 4, which is a milestone.
@@ -85,11 +96,17 @@ js/store.js            derived state, the progression rule, rest-day rules
 js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
 js/charts.js           hand-rolled SVG charts
 js/views/              dashboard · schedule · progress · coach
-js/logs/               strength (also owns the sheet + date bar) ·
-                       session (endurance, PE, bodyweight, type chooser) ·
-                       onboard
+js/logs/               strength — hangboard + limit bouldering; also owns
+                       the sheet shell and the date bar ·
+                       session (endurance, PE, bodyweight, type chooser,
+                       plan-ahead picker) · onboard
 js/app.js              shell, routing, user switching
 ```
 
 Every animation degrades to an instant state change when GSAP is absent
 or `prefers-reduced-motion` is set.
+
+Installed to a home screen, the app suppresses pinch zoom, double-tap
+zoom and pull-to-refresh — an over-scroll shouldn't reload the page
+mid-log. Opened in a browser tab it leaves all three alone; taking them
+from a page someone is merely visiting would be hostile.

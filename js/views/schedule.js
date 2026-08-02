@@ -24,8 +24,13 @@
       });
     }
 
+    function dayFullToast(iso) {
+      toast('That day is full', `${dt.short(iso)} already has ${S.maxPerDay} sessions. Two is the most a day holds.`);
+    }
+
     /* move + animate, shared by drag and keyboard */
     function relocate(slotId, toISO, announce) {
+      if (S.dayIsFull(c, toISO, slotId)) { dayFullToast(toISO); return; }
       const before = hasFlip ? Flip.getState(CT.ui.$$('.slot', shell)) : null;
       S.moveSlot(c, slotId, toISO);
       render();
@@ -75,7 +80,13 @@
           if (to < wkStart || to > dt.addISO(wkStart, 6)) return;
           relocate(slot.id, to, false);
         });
-        node.addEventListener('dblclick', () => CT.openLog(slot.type, { date: slot.date, slotId: slot.id }));
+        node.addEventListener('dblclick', () => {
+          if (slot.date > dt.iso(dt.today())) {
+            toast('That day hasn’t happened yet', dt.short(slot.date) + ' is planned — log it on the day.');
+            return;
+          }
+          CT.openLog(slot.type, { date: slot.date, slotId: slot.id });
+        });
       }
       return node;
     }
@@ -147,11 +158,16 @@
         ]);
         S.slotsOn(c, date).forEach(s => day.appendChild(slotNode(s)));
 
-        if (!past || isToday) {
+        /* Today and the past get a log — the session either happened or it
+           didn't. A future day gets a placeholder: there is nothing to
+           record yet. Either way, a full day has no room for another. */
+        const future = date > todayISO;
+        if ((!past || isToday) && !S.dayIsFull(c, date)) {
           day.appendChild(el('button', {
             class: 'btn btn--quiet btn--sm', style: 'width:100%;justify-content:center;color:var(--ink-4);margin-top:auto',
-            title: 'Log a session on ' + dt.short(date),
-            onclick: () => CT.openLog(null, { date })
+            title: (future ? 'Plan a session for ' : 'Log a session on ') + dt.short(date),
+            'aria-label': (future ? 'Plan a session for ' : 'Log a session on ') + dt.short(date),
+            onclick: () => future ? CT.views.planSlot(c, date) : CT.openLog(null, { date })
           }, [ icon('plus') ]));
         }
         grid.appendChild(day);
@@ -201,15 +217,23 @@
           },
           onDrag() {
             const target = dayUnderPointer(this.pointerX, this.pointerY);
-            CT.ui.$$('.day', shell).forEach(d => d.classList.toggle('is-drop', d === target && d.dataset.date !== originDate()));
+            CT.ui.$$('.day', shell).forEach(d => {
+              const over = d === target && d.dataset.date !== originDate();
+              const full = over && S.dayIsFull(c, d.dataset.date, slotId);
+              d.classList.toggle('is-drop', over && !full);
+              d.classList.toggle('is-full', !!full);
+            });
           },
           onDragEnd() {
             const target = dayUnderPointer(this.pointerX, this.pointerY);
-            CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop'));
+            CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop', 'is-full'));
             node.classList.remove('is-dragging');
             gsap.to(node, { scale: 1, rotate: 0, duration: .2 });
-            if (!target || target.dataset.date === originDate()) {
+            const refused = target && target.dataset.date !== originDate()
+                         && S.dayIsFull(c, target.dataset.date, slotId);
+            if (!target || target.dataset.date === originDate() || refused) {
               gsap.to(node, { x: 0, y: 0, duration: .45, ease: 'power3.out' });
+              if (refused) dayFullToast(target.dataset.date);
               return;
             }
             const before = hasFlip ? Flip.getState(CT.ui.$$('.slot', shell)) : null;

@@ -187,8 +187,31 @@
     }, 700);
   };
 
+  /* ── installed app ──────────────────────────────────────────
+     Only when launched from the home screen. A browser tab keeps its
+     pinch zoom and its pull-to-refresh — taking those away from a page
+     someone is merely visiting would be hostile. */
+  function lockGestures() {
+    const modes = ['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'];
+    const installed = window.navigator.standalone === true ||
+      (window.matchMedia && modes.some(m => window.matchMedia(`(display-mode: ${m})`).matches));
+    if (!installed) return;
+
+    document.documentElement.classList.add('is-pwa');
+
+    const vp = CT.ui.$('meta[name="viewport"]');
+    if (vp) vp.setAttribute('content',
+      'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+
+    /* iOS honours neither `user-scalable` nor `touch-action` for pinch in
+       standalone, so the gesture events get refused directly. */
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(t =>
+      document.addEventListener(t, e => e.preventDefault(), { passive: false }));
+  }
+
   /* ── boot ───────────────────────────────────────────────── */
   function boot() {
+    lockGestures();
     const main = CT.ui.$('#main'), bar = CT.ui.$('#topbar');
     main.addEventListener('scroll', () => bar.classList.toggle('is-stuck', main.scrollTop > 4), { passive: true });
     CT.ui.$('#railScrim').addEventListener('click', () => toggleRail(false));

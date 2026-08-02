@@ -43,6 +43,15 @@
       return c.slots.filter(s => s.date >= a && s.date <= b).sort((x,y) => x.date < y.date ? -1 : 1);
     },
     slotsOn(c, iso) { return c.slots.filter(s => s.date === iso); },
+
+    /* A day holds two planned sessions at most — a third stops fitting the
+       day cell and stops being a day anyone would actually train. This
+       governs the planner only: logging what you really did is never
+       blocked by it. */
+    maxPerDay: 2,
+    dayIsFull(c, iso, exceptSlotId) {
+      return S.slotsOn(c, iso).filter(s => s.id !== exceptSlotId).length >= S.maxPerDay;
+    },
     sessionsOn(c, iso) { return c.sessions.filter(s => s.date === iso); },
     session(c, id) { return c.sessions.find(s => s.id === id); },
     lastSession(c) {
@@ -138,9 +147,13 @@
     },
 
     /* ── rest-rule guidance (advisory only, never blocking) ── */
+    /* All of this is advice about how to arrange training that is still
+       ahead of you. Once the last day it concerns has been and gone there
+       is nothing left to act on, so it stays quiet. */
     weekNudges(c, w) {
       const slots = S.slotsInWeek(c, w);
       const out = [];
+      const todayISO = dt.iso(dt.today());
       const hard = slots.filter(s => s.type === 'strength' || s.type === 'pe')
                         .sort((a,b) => a.date < b.date ? -1 : 1);
 
@@ -149,6 +162,7 @@
         const a = hard[i-1], b = hard[i];
         const gap = dt.diff(b.date, a.date) - 1;                    // full rest days between
         if (gap >= 2) continue;
+        if (b.date < todayISO) continue;                            // already trained through
         if (a.type === 'strength' && b.type === 'strength') {
           out.push({ tone:'warn', text:`Two <b>Strength</b> sessions on ${dt.dow(a.date)} and ${dt.dow(b.date)} — ${rest(gap)} between. Fingers usually want two.` });
         } else if (gap < 1) {
@@ -165,7 +179,9 @@
         if (dt.diff(days[i], days[i-1]) === 1) { run++; if (run > best) { best = run; from = days[i-run+1]; } }
         else run = 1;
       }
-      if (best >= 4) out.push({ tone:'info', text:`<b>${best} training days in a row</b> from ${dt.dow(from)}. A rest day in the middle would land better.` });
+      if (best >= 4 && dt.addISO(from, best - 1) >= todayISO) {
+        out.push({ tone:'info', text:`<b>${best} training days in a row</b> from ${dt.dow(from)}. A rest day in the middle would land better.` });
+      }
 
       return out.slice(0, 2);   // guidance, not a lecture
     },
@@ -235,11 +251,23 @@
 
     moveSlot(c, slotId, toISO) {
       const slot = c.slots.find(s => s.id === slotId);
-      if (!slot) return;
+      if (!slot) return false;
+      if (slot.date !== toISO && S.dayIsFull(c, toISO, slotId)) return false;
       slot.date = toISO;
       slot.week = S.weekOf(c, toISO);
       const ses = slot.sessionId && S.session(c, slot.sessionId);
       if (ses) ses.date = toISO;
+      return true;
+    },
+
+    /* Planning a future day places a placeholder, not a record — there is
+       nothing to log until the session has actually happened. */
+    addPlannedSlot(c, iso, type) {
+      if (S.dayIsFull(c, iso)) return null;
+      const slot = { id: 'slot_' + Math.random().toString(36).slice(2,9), week: S.weekOf(c, iso),
+                     type, date: iso, status: 'suggested', sessionId: null };
+      c.slots.push(slot);
+      return slot;
     },
 
     /* Changing a target changes the plan with it — otherwise the week
@@ -263,13 +291,18 @@
       }
     },
 
+    /* Spread across the week: the emptiest day takes it, earliest breaks a
+       tie. Once every day is at capacity there is nowhere left to put one. */
     _addSlot(c, w, type) {
       const wkStart = S.weekStart(c, w);
-      const taken = new Set(c.slots.filter(s => s.week === w).map(s => dt.diff(s.date, wkStart)));
-      let off = [0,1,2,3,4,5,6].find(d => !taken.has(d));
-      if (off === undefined) off = 6;
-      c.slots.push({ id: 'slot_' + Math.random().toString(36).slice(2,9), week: w, type,
-                     date: dt.addISO(wkStart, off), status: 'suggested', sessionId: null });
+      const count = iso => S.slotsOn(c, iso).length;
+      let best = null;
+      for (let d = 0; d < 7; d++) {
+        const iso = dt.addISO(wkStart, d);
+        if (best === null || count(iso) < count(best)) best = iso;
+      }
+      if (count(best) >= S.maxPerDay) return null;
+      return S.addPlannedSlot(c, best, type);
     },
 
     addClient(c) { CT.world.clients[c.id] = c; return c; },

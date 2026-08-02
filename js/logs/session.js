@@ -43,6 +43,56 @@
     });
   };
 
+  /* ═══════════════ planning a future day ═══════════════
+     A day that hasn't happened yet can't be logged — pick the kind of
+     session and it lands on the plan as a placeholder, to be logged on
+     the day itself. Power Endurance is offered by the week the date
+     falls in, not by the week the athlete is in today. */
+  CT.views.planSlot = function (c, date) {
+    if (S.isCoach()) {
+      toast('Coaches don’t plan from here', `Switch to ${c.name} in the corner to add to their week.`);
+      return;
+    }
+    const peOpen = S.weekOf(c, date) >= c.block.peFromWeek;
+    const kinds = [
+      ['strength',  'Strength',        'Max hangs or limit bouldering'],
+      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
+      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
+    ].filter(([id]) => id !== 'pe' || peOpen);
+
+    const place = type => {
+      if (!S.addPlannedSlot(c, date, type)) {
+        toast('That day is full', `${dt.short(date)} already has ${S.maxPerDay} sessions.`);
+        return;
+      }
+      CT.sheet.close();
+      CT.render(false);
+      toast(CT.TYPE[type].label + ' planned', dt.short(date) + ' · log it on the day.');
+    };
+
+    const body = el('div', { class: 'sheet__bd' }, [
+      el('div', { class: 'picker', style: 'grid-template-columns:1fr' }, kinds.map(([id, name, desc]) =>
+        el('button', { class: 'pick', onclick: () => place(id) }, [
+          el('div', { class: 'row', style: 'gap:10px' }, [
+            el('span', { class: 'quick__dot quick__dot--' + (id === 'strength' ? 's' : id === 'pe' ? 'p' : 'e') }),
+            el('p', { class: 'pick__n', text: name })
+          ]),
+          el('p', { class: 'pick__d', style: 'margin-left:17px', text: desc })
+        ])
+      )),
+      el('p', { class: 'tiny', text: peOpen
+        ? 'It joins your plan as a suggested session — drag it to another day any time.'
+        : `It joins your plan as a suggested session. Power Endurance opens in week ${c.block.peFromWeek}.` })
+    ]);
+
+    CT.sheet.open({
+      eyebrow: 'Plan ahead',
+      title: 'What are you planning for ' + dt.short(date) + '?',
+      sub: dt.relative(date) + ' — nothing is logged until the day itself',
+      body
+    });
+  };
+
   /* ═══════════════ bodyweight ═══════════════ */
   CT.views.weightLog = function (c, opts) {
     opts = opts || {};

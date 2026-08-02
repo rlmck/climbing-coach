@@ -394,6 +394,8 @@ input[type=range]::-moz-range-thumb{
 .day--past{ background:var(--surface-2); }
 .day--future .day__num{ color:var(--ink-4); }
 .day.is-drop{ border-color:var(--spruce); background:var(--spruce-tint); box-shadow:0 0 0 3px rgba(46,94,78,.10); }
+/* two sessions is a full day — say so before the drop, not after */
+.day.is-full{ border-color:var(--clay); background:var(--clay-tint); box-shadow:0 0 0 3px rgba(169,68,54,.08); }
 .day__hd{ display:flex; align-items:baseline; gap:6px; padding:0 3px 2px; }
 .day__dow{ font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-3); }
 .day__num{ font-size:14px; font-weight:600; letter-spacing:-.02em; margin-left:auto; font-variant-numeric:tabular-nums; }
@@ -893,7 +895,11 @@ input[type=range]::-moz-range-thumb{
   .day{ min-height:0; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; }
   .day__hd{ flex:0 0 62px; flex-direction:column; align-items:flex-start; gap:1px; padding:0; }
   .day__num{ margin-left:0; font-size:16px; }
-  .day .slot{ flex:1 1 130px; }
+  /* Two sessions share the day's row rather than wrapping it onto a second
+     one. `min-width:0` lets them actually shrink; the meta line ellipses
+     instead of forcing the row wider. */
+  .day .slot{ flex:1 1 0; min-width:0; }
+  .day .slot__meta{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .day > .btn--quiet{ flex:0 0 auto; margin-top:0 !important; width:auto !important; }
 
   .formgrid{ grid-template-columns:1fr; }
@@ -935,6 +941,24 @@ input[type=range]::-moz-range-thumb{
   .rep__lbl{ font-size:9px; }
   .tab span{ font-size:9.5px; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   Installed app
+   Launched from the home screen this is an app, not a page: a
+   stray two-finger spread shouldn't zoom it and an over-scroll
+   at the top shouldn't reload it mid-log. Applied by a class
+   app.js sets only in standalone — in a browser tab, pinch
+   zoom and pull-to-refresh are left alone.
+   ═══════════════════════════════════════════════════════════ */
+.is-pwa, .is-pwa body{
+  overscroll-behavior:none;
+  touch-action:pan-x pan-y;      /* scrolling yes, pinch and double-tap no */
+}
+.is-pwa .main, .is-pwa .rail, .is-pwa .sheet-host, .is-pwa .sheet__bd{
+  overscroll-behavior:contain;   /* don't chain an over-scroll out to the page */
+}
+/* the RPE slider is dragged, not panned over — it needs the touch back */
+.is-pwa input[type=range]{ touch-action:none; }
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
