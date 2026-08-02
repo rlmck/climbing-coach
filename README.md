@@ -65,6 +65,12 @@ session either happened or it didn't. A **future** day plans instead:
 pick the kind of session and it lands as a suggested placeholder, to be
 logged on the day itself.
 
+**Tap any unlogged session** to open it: the day, how far off it is, what
+the week still asks for, "Log it" if the day has come, and "Remove from
+plan" either way. Removing arms first and confirms on a second tap, and
+only ever touches the placeholder — a session with something logged
+against it is deleted from its own log screen, which puts the loads back.
+
 **Streak** — completing the current week's targets extends it. Maks is on
 3; finishing week 8 lands 4, which is a milestone.
 

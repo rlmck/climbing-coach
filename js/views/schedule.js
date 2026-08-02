@@ -52,9 +52,10 @@
         data: { slot: slot.id, flipId: slot.id },
         tabindex: 0,
         role: 'button',
-        'aria-label': `${T.label}, ${dt.short(slot.date)}, ${status}` +
-          (locked ? '. Open to edit or delete it.' : '. Use left and right arrow keys to move it a day.'),
-        title: locked ? 'Open to edit or delete' : 'Drag to another day, or use ← →'
+        'aria-label': `${T.label}, ${dt.short(slot.date)}, ${status}. ` +
+          (locked ? 'Open to edit or delete it.'
+                  : 'Open to log or remove it, or use left and right arrow keys to move it a day.'),
+        title: locked ? 'Open to edit or delete' : 'Tap to log or remove · drag to another day, or use ← →'
       }, [
         el('span', { class: 'slot__bar' }),
         locked ? icon('check', 'slot__tick') : null,
@@ -72,20 +73,23 @@
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
         });
       } else {
+        /* A press that turns into a drag must not also open the sheet on
+           release. The flag is cleared on every fresh press, so a tap that
+           never moved always reads as a tap. */
+        const open = () => {
+          if (node._dragged) { node._dragged = false; return; }
+          CT.views.slotSheet(c, slot);
+        };
+        node.addEventListener('pointerdown', () => { node._dragged = false; });
+        node.addEventListener('click', open);
         node.addEventListener('keydown', ev => {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); return; }
           if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
           ev.preventDefault();
           const to = dt.addISO(slot.date, ev.key === 'ArrowRight' ? 1 : -1);
           const wkStart = S.weekStart(c, week);
           if (to < wkStart || to > dt.addISO(wkStart, 6)) return;
           relocate(slot.id, to, false);
-        });
-        node.addEventListener('dblclick', () => {
-          if (slot.date > dt.iso(dt.today())) {
-            toast('That day hasn’t happened yet', dt.short(slot.date) + ' is planned — log it on the day.');
-            return;
-          }
-          CT.openLog(slot.type, { date: slot.date, slotId: slot.id });
         });
       }
       return node;
@@ -179,8 +183,8 @@
         legend('var(--surface-2)', 'var(--line-2)', 'Suggested'),
         legend('transparent', 'var(--line-2)', 'Missed'),
         el('p', { class: 'tiny', style: 'margin-left:auto',
-          text: hasDrag ? 'Drag to move · ← → when focused · tap a completed session to edit it'
-                        : 'Focus a session and use ← → to move it · tap a completed one to edit' })
+          text: hasDrag ? 'Tap a session to log or remove it · drag to move · ← → when focused'
+                        : 'Tap a session to log or remove it · focus one and use ← → to move it' })
       ]));
 
       motion.enter(shell);
@@ -212,6 +216,7 @@
           cursor: 'grab',
           activeCursor: 'grabbing',
           onDragStart() {
+            node._dragged = true;              // this press is a move, not a tap
             node.classList.add('is-dragging');
             gsap.to(node, { scale: 1.04, rotate: -1, duration: .2 });
           },

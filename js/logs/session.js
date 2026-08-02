@@ -93,6 +93,63 @@
     });
   };
 
+  /* ═══════════════ a planned session ═══════════════
+     Nothing is recorded against it yet, so there are only two things to do
+     with one: log it, or get rid of it. Which of those is on offer depends
+     on whether the day has happened. Removing takes the usual one step of
+     friction — the button arms itself first. */
+  CT.views.slotSheet = function (c, slot) {
+    const T = CT.TYPE[slot.type];
+    const todayISO = dt.iso(dt.today());
+    const future = slot.date > todayISO;
+    const missed = S.slotStatus(c, slot) === 'missed';
+
+    /* how thin the week gets if this one goes */
+    const asks = slot.type === 'pe' && slot.week < c.block.peFromWeek ? 0 : c.targets[slot.type];
+    const planned = c.slots.filter(s => s.week === slot.week && s.type === slot.type).length;
+
+    const cell = (label, value) => el('div', {}, [ el('dt', { text: label }), el('dd', { text: value }) ]);
+
+    const body = el('div', { class: 'sheet__bd' }, [
+      el('dl', { class: 'proto' }, [
+        cell('Day', dt.short(slot.date)),
+        cell('When', dt.relative(slot.date)),
+        cell('Status', missed ? 'Missed' : 'Suggested')
+      ]),
+      el('p', { class: 'sub', text: slot.type === 'strength'
+        ? `Prescribed +${c.prescribed.tfd} kg drag · +${c.prescribed.half} kg half-crimp`
+        : T.detail }),
+      planned <= asks
+        ? el('div', { class: 'nudge' }, [ icon('info'), el('p', {
+            html: `Your week asks for <b>${asks} ${T.label}</b>. Remove this and ${planned - 1} ` +
+                  `${planned - 1 === 1 ? 'is' : 'are'} left planned — you can still log one on any day.` }) ])
+        : null,
+      el('p', { class: 'tiny', text: future
+        ? 'Nothing is logged against a planned session until the day itself.'
+        : 'Drag it to another day, or use ← → when it’s focused.' })
+    ]);
+
+    const footer = el('div', { class: 'sheet__ft' }, [
+      CT.deleteButton(() => {
+        S.removeSlot(c, slot.id);
+        CT.sheet.close();
+        CT.render(false);
+        toast('Removed from your plan', `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+      }, 'Remove from plan'),
+      el('p', { class: 'sub', text: future ? 'Planned · ' + dt.relative(slot.date) : missed ? 'Not logged' : 'Due today' }),
+      future ? null : el('button', { class: 'btn btn--primary',
+        onclick: () => { CT.sheet.close(true); CT.openLog(slot.type, { date: slot.date, slotId: slot.id }); } },
+        [ icon('check'), missed ? 'Log it late' : 'Log it' ])
+    ]);
+
+    CT.sheet.open({
+      eyebrow: future ? 'Planned' : missed ? 'Missed' : 'Today',
+      title: T.label,
+      sub: `${dt.short(slot.date)} · nothing logged against it yet`,
+      body, footer
+    });
+  };
+
   /* ═══════════════ bodyweight ═══════════════ */
   CT.views.weightLog = function (c, opts) {
     opts = opts || {};

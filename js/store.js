@@ -260,6 +260,15 @@
       return true;
     },
 
+    /* Only ever an unlogged slot. A completed one is removed by deleting
+       the session behind it, which also puts the loads back. */
+    removeSlot(c, slotId) {
+      const i = c.slots.findIndex(s => s.id === slotId);
+      if (i < 0 || c.slots[i].sessionId) return false;
+      c.slots.splice(i, 1);
+      return true;
+    },
+
     /* Planning a future day places a placeholder, not a record — there is
        nothing to log until the session has actually happened. */
     addPlannedSlot(c, iso, type) {
