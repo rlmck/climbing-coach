@@ -4,3 +4,6 @@ Thumbs.db
 *.log
 .vscode/
 .idea/
+
+# firebase deploy artifacts
+.firebase/
