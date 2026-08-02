@@ -18,12 +18,12 @@
 
   CT.CONFIG = {
     firebase: {
-      apiKey: '',
+      apiKey: 'AIzaSyBbV8Hkg2GPcNwAoGCrOYoqRcks6JPzTfY',
       authDomain: 'coach-climbing-app.firebaseapp.com',
       projectId: 'coach-climbing-app',
       storageBucket: 'coach-climbing-app.firebasestorage.app',
-      messagingSenderId: '',
-      appId: ''
+      messagingSenderId: '305441257210',
+      appId: '1:305441257210:web:93d52cb004f20d75b8bb43'
     },
 
     /* Point the app at a local emulator suite instead of the real
