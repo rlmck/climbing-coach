@@ -13,7 +13,7 @@
      Nothing in the app opens a log without knowing what it is. */
   CT.views.chooseLog = function (c, opts) {
     const kinds = [
-      ['strength',  'Strength',        'Six max hangs, seven seconds, pass or fail'],
+      ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
     ].filter(([id]) => id !== 'pe' || S.inPEPhase(c));

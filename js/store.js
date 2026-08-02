@@ -51,6 +51,12 @@
     strengthSessions(c) {
       return c.sessions.filter(s => s.type === 'strength').sort((a,b) => a.date < b.date ? -1 : 1);
     },
+    /* sessions logged before limit bouldering existed are all hangboard */
+    strengthMode(ses) { return ses.mode || 'hangs'; },
+    /* only the hangboard carries a prescribed load, so only it replays */
+    hangSessions(c) {
+      return S.strengthSessions(c).filter(s => S.strengthMode(s) === 'hangs');
+    },
 
     /* live slot status — recomputed so backdated logs update the calendar */
     slotStatus(c, slot) {
@@ -92,7 +98,7 @@
        should actually be on. Recorded weights are never rewritten — each
        session keeps the load it was really performed at. */
     replay(c, excludeId) {
-      const list = S.strengthSessions(c).filter(s => s.id !== excludeId);
+      const list = S.hangSessions(c).filter(s => s.id !== excludeId);
       const out = {};
       CT.GRIPS.forEach(g => {
         let weight = (c.startLoads || c.prescribed)[g.id], streak = 0;

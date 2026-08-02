@@ -510,6 +510,26 @@ input[type=range]::-moz-range-thumb{
 .grip__next{ margin-left:auto; font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink-3); }
 .grip__next b{ color:var(--ink); font-weight:500; }
 
+/* limit bouldering — one card per problem */
+.bp{
+  border:1px solid var(--line); border-radius:var(--r-lg);
+  background:var(--surface);
+}
+.bp__hd{ display:flex; align-items:center; gap:11px; padding:12px 18px 0; }
+.bp__idx{ font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; color:var(--ink-4); }
+.bp__x{
+  margin-left:auto; width:26px; height:26px; border-radius:50%; flex:none;
+  display:grid; place-items:center; color:var(--ink-4);
+  transition:background .16s, color .16s;
+}
+.bp__x:hover{ background:var(--clay-tint); color:var(--clay); }
+.bp__x svg{ width:12px; height:12px; }
+.bp__body{
+  display:grid; grid-template-columns:minmax(96px,1fr) auto auto;
+  gap:16px; align-items:end; padding:11px 18px 16px;
+}
+.bp__body .stepper, .bp__body .seg{ align-self:flex-start; }
+
 /* protocol strip */
 .proto{ display:flex; gap:0; border-radius:var(--r-md); overflow:hidden; background:var(--surface-3); }
 .proto div{ flex:1; padding:11px 14px; background:var(--surface); }
@@ -561,6 +581,11 @@ input[type=range]::-moz-range-thumb{
 .sheet__x:hover{ background:var(--line-2); color:var(--ink); }
 .sheet__x svg{ width:13px; height:13px; }
 .sheet__bd{ padding:22px 24px; display:flex; flex-direction:column; gap:16px; }
+/* The body is a capped, scrolling flex column on phones. Without this, its
+   children shrink to fit instead of scrolling — and anything with a clipped
+   overflow (a grip card, the protocol strip) has an automatic minimum size
+   of zero, so it collapses and swallows its own contents. */
+.sheet__bd > *{ flex:0 0 auto; }
 .sheet__ft{
   display:flex; align-items:center; gap:12px;
   padding:16px 24px; border-top:1px solid var(--line);
@@ -890,6 +915,9 @@ input[type=range]::-moz-range-thumb{
   .grip__next{ margin-left:0; }
   .load__n{ font-size:38px; }
   .rep{ height:74px; }
+  .bp__hd{ padding:12px 16px 0; }
+  .bp__body{ grid-template-columns:1fr auto; gap:12px 16px; padding:10px 16px 15px; }
+  .bp__body .field:last-child{ grid-column:1/-1; }
   .datebar{ gap:8px; }
   .datepick input{ width:118px; }
   .toasts{ bottom:calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 14px); width:calc(100% - 32px); }

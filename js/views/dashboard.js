@@ -211,7 +211,7 @@
     ]);
 
     const cards = [
-      b('strength', 'Strength', '6 hangs · 7 s · pass or fail'),
+      b('strength', 'Strength', 'Max hangs or limit bouldering'),
       b('endurance', 'Endurance', 'Routes, traversing, edge pulls…')
     ];
     if (S.inPEPhase(c)) cards.push(b('pe', 'Power Endurance', '4×4s, wall crawls, repeaters'));
@@ -244,6 +244,13 @@
   /* one-line description of a logged session, reused by schedule + coach views */
   CT.describe = function (c, ses) {
     if (ses.type === 'strength') {
+      if (S.strengthMode(ses) === 'limit') {
+        const ps = ses.problems || [];
+        const tries = ps.reduce((a, p) => a + p.attempts, 0);
+        const sent = ps.filter(p => p.sent).length;
+        return ['Limit bouldering', CT.topGrade(ps), `${tries} ${tries === 1 ? 'attempt' : 'attempts'}`,
+                sent ? `${sent} sent` : null].filter(Boolean).join(' · ');
+      }
       const parts = CT.GRIPS.map(g => {
         const r = ses.reps[g.id];
         return `${g.short} +${ses.weights[g.id]} kg ${r.filter(Boolean).length}/${r.length}`;

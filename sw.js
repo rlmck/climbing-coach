@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v4';
+const CACHE = 'coach-v5';
 
 const SHELL = [
   './',

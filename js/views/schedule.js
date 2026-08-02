@@ -82,6 +82,11 @@
 
     function shortDesc(ses) {
       if (ses.type === 'strength') {
+        if (S.strengthMode(ses) === 'limit') {
+          const ps = ses.problems || [];
+          const tries = ps.reduce((a, p) => a + p.attempts, 0);
+          return [CT.topGrade(ps), tries + ' tries'].filter(Boolean).join(' · ');
+        }
         const total = CT.GRIPS.reduce((a, g) => a + ses.reps[g.id].filter(Boolean).length, 0);
         return total + '/6 clean';
       }

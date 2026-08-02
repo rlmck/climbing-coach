@@ -197,12 +197,15 @@
         el('p', { class: 'histrow__t', text: T.label }),
         el('p', { class: 'histrow__d', text: CT.describe(c, s) })
       ]),
-      s.type === 'strength' ? el('div', { class: 'row', style: 'gap:10px' },
-        CT.GRIPS.map(g => el('span', { class: 'pips', title: g.name },
-          s.reps[g.id].map(r => el('span', {
-            class: 'pip' + (r ? ' pip--on' : ''),
-            style: r ? '' : 'background:var(--clay-tint);box-shadow:inset 0 0 0 1px var(--clay)'
-          }))))) : null,
+      s.type !== 'strength' ? null
+        : S.strengthMode(s) === 'limit'
+          ? el('span', { class: 'chip', text: CT.topGrade(s.problems) || 'Limit' })
+          : el('div', { class: 'row', style: 'gap:10px' },
+              CT.GRIPS.map(g => el('span', { class: 'pips', title: g.name },
+                s.reps[g.id].map(r => el('span', {
+                  class: 'pip' + (r ? ' pip--on' : ''),
+                  style: r ? '' : 'background:var(--clay-tint);box-shadow:inset 0 0 0 1px var(--clay)'
+                }))))),
       el('span', { class: 'histrow__date', text: dt.short(s.date) }),
       icon('fwd', 'histrow__chev')
     ]);

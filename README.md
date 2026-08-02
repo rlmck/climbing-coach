@@ -36,6 +36,13 @@ holds the load — both outcomes visible side by side.
 
 Each rep cycles **clean → failed → cleared** on tap.
 
+**Limit bouldering** — the other half of a strength session. The strength
+log opens on a mode picker: **Hangboard** or **Limit Bouldering**. The
+limit form is one row per problem — grade, attempts, worked or sent — with
+a live tally above it. It's recruitment work with no prescribed load, so
+it's kept out of the +2.5 kg progression entirely: only hangboard sessions
+replay into the athlete's loads.
+
 **Backdated logging** — every log flow opens with a date control, set to
 today, clamped to the current block. Pick a past date and a banner
 appears saying which day you're logging and how long ago it was. Maks's

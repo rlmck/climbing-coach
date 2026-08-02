@@ -48,7 +48,7 @@
 
   /* ── taxonomy ───────────────────────────────────────────── */
   CT.TYPE = {
-    strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs · 6 × 7 s' },
+    strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs or limit boulders' },
     endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity' },
     pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic · final 3 weeks' }
   };
@@ -59,6 +59,32 @@
   ];
 
   CT.PROTOCOL = { hangSec:7, repsPerGrip:3, reserveSec:2, restSec:180, increment:2.5, cleanTarget:2 };
+
+  /* Two ways to spend a strength session. Only the hangboard carries a
+     prescribed load, so only it feeds the progression rule — limit
+     bouldering is maximal recruitment work with nothing to advance. */
+  CT.STRENGTH_MODES = [
+    { id:'hangs', name:'Hangboard',        desc:'Six max hangs · 7 s · pass or fail' },
+    { id:'limit', name:'Limit Bouldering', desc:'A few maximal problems, attempts logged per grade' }
+  ];
+  CT.LIMIT = {
+    grades: ['V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12'],
+    defaultGrade: 'V5',
+    defaultAttempts: 5,
+    maxAttempts: 40,
+    restMin: '3–5',
+    problemsHint: '3–5'
+  };
+  /* hardest grade touched in a limit session — grades are ordered, so the
+     highest index wins */
+  CT.topGrade = function (problems) {
+    let best = -1;
+    (problems || []).forEach(p => {
+      const i = CT.LIMIT.grades.indexOf(p.grade);
+      if (i > best) best = i;
+    });
+    return best < 0 ? null : CT.LIMIT.grades[best];
+  };
 
   CT.MODALITIES = {
     endurance: [
@@ -173,7 +199,7 @@
           grip[k].weight += CT.PROTOCOL.increment;
         }
       });
-      const ses = { id: uid('ses'), date: slot.date, type: 'strength', weights, reps, notes:'' };
+      const ses = { id: uid('ses'), date: slot.date, type: 'strength', mode: 'hangs', weights, reps, notes:'' };
       sessions.push(ses); slot.sessionId = ses.id;
     });
 

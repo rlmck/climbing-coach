@@ -125,18 +125,110 @@
     return wrap;
   };
 
-  /* ═════════════════ strength log ═════════════════ */
+  /* ═════════════════ strength log ═════════════════
+     Two shapes of strength session share one sheet: the hangboard, which
+     carries a prescribed load and drives the progression rule, and limit
+     bouldering, which is attempts at a grade and advances nothing. The
+     mode picker only appears when creating — changing an existing
+     session's mode would throw away the shape it was logged in. */
   CT.views.strengthLog = function (c, opts) {
-    const P = CT.PROTOCOL;
+    opts = opts || {};
     const editing = opts.sessionId ? S.session(c, opts.sessionId) : null;
+
+    let mode = editing ? S.strengthMode(editing)
+             : CT.STRENGTH_MODES.some(m => m.id === opts.mode) ? opts.mode : 'hangs';
+    let form = null, sheet = null;
+
+    const summary = el('p', { class: 'sub' });
+    const saveBtn = el('button', { class: 'btn btn--primary', disabled: true, onclick: save },
+      [ icon('check'), editing ? 'Save changes' : 'Save session' ]);
+
+    const dateBar = CT.dateBar(c, editing ? editing.date : opts.date, () => form && form.refresh());
+    const host = el('div', { class: 'stack', style: 'gap:16px' });
+
+    const picker = editing ? null : el('div', { class: 'picker' }, CT.STRENGTH_MODES.map(m =>
+      el('button', { class: 'pick', 'aria-pressed': String(m.id === mode), onclick: () => setMode(m.id) }, [
+        el('p', { class: 'pick__n', text: m.name }),
+        el('p', { class: 'pick__d', text: m.desc })
+      ])
+    ));
+
+    function setMode(id) {
+      if (form && id === mode) return;
+      mode = id;
+      if (picker) [...picker.children].forEach((b, i) =>
+        b.setAttribute('aria-pressed', String(CT.STRENGTH_MODES[i].id === id)));
+
+      CT.ui.clear(host);
+      form = (id === 'limit' ? limitForm : hangForm)(c, editing, { summary, saveBtn });
+      host.appendChild(form.node);
+      form.refresh();
+
+      if (!sheet) return;                       // first build — the sheet isn't open yet
+      CT.ui.$('.sheet__title', sheet).textContent = form.title;
+      CT.ui.$('.sheet__sub', sheet).textContent = form.sub;
+      motion.enter(form.node);
+    }
+
+    function save() {
+      const date = dateBar.get();
+      const payload = Object.assign({ date, mode }, form.payload());
+
+      if (editing) {
+        S.updateSession(c, editing.id, payload);
+        CT.sheet.close();
+        CT.render(false);
+        toast('Session updated', dt.short(date) + ' · ' + form.savedSub());
+        return;
+      }
+
+      const before = S.streak(c);
+      S.logSession(c, Object.assign({ type: 'strength' }, payload));
+      CT.sheet.close();
+      toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date), form.savedSub());
+      CT.afterLog(c, before);
+    }
+
+    setMode(mode);
+
+    const body = el('div', { class: 'sheet__bd' }, [
+      dateBar,
+      picker ? el('div', {}, [
+        el('p', { class: 'eyebrow', style: 'margin-bottom:10px', text: 'What did you do' }),
+        picker
+      ]) : null,
+      host
+    ]);
+
+    const footer = el('div', { class: 'sheet__ft' }, [
+      editing ? CT.deleteButton(() => {
+        S.deleteSession(c, editing.id);
+        CT.sheet.close();
+        CT.render(false);
+        toast('Session deleted', mode === 'limit'
+          ? dt.short(editing.date) + ' cleared from your week.'
+          : 'Loads recalculated from what is left.');
+      }) : null,
+      summary, saveBtn
+    ]);
+
+    sheet = CT.sheet.open({
+      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : 'Strength',
+      title: form.title,
+      sub: form.sub,
+      body, footer
+    });
+  };
+
+  /* ═════════════════ hangboard ═════════════════ */
+  function hangForm(c, editing, ctx) {
+    const P = CT.PROTOCOL;
     const reps = editing
       ? { tfd: editing.reps.tfd.slice(), half: editing.reps.half.slice() }
       : { tfd: [null, null, null], half: [null, null, null] };
     const shown = { tfd: false, half: false };          // is the +2.5 reveal on screen?
 
-    /* declared before the date bar: its first render calls back into refresh() */
     const gripNodes = {};
-    const dateBar = CT.dateBar(c, editing ? editing.date : opts.date, () => refresh());
 
     /* When editing, the baseline is the athlete's state with this session
        taken back out — otherwise the session would be counted twice. */
@@ -270,22 +362,19 @@
       });
 
       const complete = total === 6;
-      saveBtn.disabled = !complete;
+      ctx.saveBtn.disabled = !complete;
       const earned = CT.GRIPS.filter(g => shown[g.id]);
-      summary.innerHTML = !complete
+      ctx.summary.innerHTML = !complete
         ? `<b>${total}</b> of 6 hangs logged`
         : earned.length
           ? `<b>${cleanCount}/6 clean</b> · +${P.increment} kg on ${earned.map(g => g.short.toLowerCase()).join(' and ')}`
           : `<b>${cleanCount}/6 clean</b> · load holds next session`;
     }
 
-    /* ── chrome ── */
-    const summary = el('p', { class: 'sub' });
-    const saveBtn = el('button', { class: 'btn btn--primary', disabled: true, onclick: save },
-      [ icon('check'), editing ? 'Save changes' : 'Save session' ]);
+    const notes = el('textarea', { class: 'input', text: editing ? editing.notes : '',
+      placeholder: 'Skin, warm-up, anything worth remembering next time.' });
 
-    const body = el('div', { class: 'sheet__bd' }, [
-      dateBar,
+    const node = el('div', { class: 'stack', style: 'gap:16px' }, [
       el('dl', { class: 'proto' }, [
         el('div', {}, [ el('dt', { text: 'Edge' }),   el('dd', { text: '20 mm' }) ]),
         el('div', {}, [ el('dt', { text: 'Hang' }),   el('dd', { text: P.hangSec + ' s' }) ]),
@@ -294,54 +383,172 @@
         el('div', {}, [ el('dt', { text: 'Reps' }),   el('dd', { text: '3 per grip' }) ])
       ]),
       ...CT.GRIPS.map(gripCard),
-      el('div', { class: 'field' }, [
-        el('label', { for: 'sNotes', text: 'Notes' }),
-        el('textarea', { class: 'input', id: 'sNotes', text: editing ? editing.notes : '',
-          placeholder: 'Skin, warm-up, anything worth remembering next time.' })
-      ])
+      el('div', { class: 'field' }, [ el('label', { text: 'Notes' }), notes ])
     ]);
 
-    const footer = el('div', { class: 'sheet__ft' }, [
-      editing ? CT.deleteButton(() => {
-        S.deleteSession(c, editing.id);
-        CT.sheet.close();
-        CT.render(false);
-        toast('Session deleted', 'Loads recalculated from what is left.');
-      }) : null,
-      summary, saveBtn
-    ]);
-
-    function save() {
-      const date = dateBar.get();
-      const weights = {}; CT.GRIPS.forEach(g => weights[g.id] = gripNodes[g.id].base.weight);
-      const earnedGrips = CT.GRIPS.filter(g => shown[g.id]);
-      const notes = CT.ui.$('#sNotes', body).value.trim();
-      const payload = { date, weights, reps: { tfd: reps.tfd.slice(), half: reps.half.slice() }, notes };
-
-      if (editing) {
-        S.updateSession(c, editing.id, payload);
-        CT.sheet.close();
-        CT.render(false);
-        toast('Session updated', dt.short(date) + ' · loads recalculated.');
-        return;
-      }
-
-      const before = S.streak(c);
-      S.logSession(c, Object.assign({ type: 'strength' }, payload));
-      CT.sheet.close();
-      toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date),
-        earnedGrips.length
-          ? `+${P.increment} kg on ${earnedGrips.map(g => g.short.toLowerCase()).join(' and ')} next session.`
-          : 'Load holds next session.');
-      CT.afterLog(c, before);
-    }
-
-    CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : 'Strength',
+    return {
+      node, refresh,
       title: 'Max hangs',
       sub: `Six hangs · ${P.hangSec} seconds · pass means ${P.reserveSec} seconds still in reserve`,
-      body, footer
-    });
-    refresh();
-  };
+      payload() {
+        const weights = {}; CT.GRIPS.forEach(g => weights[g.id] = gripNodes[g.id].base.weight);
+        return { weights, reps: { tfd: reps.tfd.slice(), half: reps.half.slice() }, notes: notes.value.trim() };
+      },
+      savedSub() {
+        const earned = CT.GRIPS.filter(g => shown[g.id]);
+        return earned.length
+          ? `+${P.increment} kg on ${earned.map(g => g.short.toLowerCase()).join(' and ')} next session.`
+          : 'Load holds next session.';
+      }
+    };
+  }
+
+  /* ═════════════════ limit bouldering ═════════════════
+     One row per problem: the grade, and how many goes went into it. No
+     prescribed load, so nothing here advances — the record is the point. */
+  function limitForm(c, editing, ctx) {
+    const L = CT.LIMIT;
+    const problems = editing && editing.problems && editing.problems.length
+      ? editing.problems.map(p => ({ grade: p.grade, attempts: p.attempts, sent: !!p.sent }))
+      : [ { grade: L.defaultGrade, attempts: L.defaultAttempts, sent: false } ];
+
+    const list = el('div', { class: 'stack', style: 'gap:10px' });
+    const tally = {};
+    const cell = (label, id) => {
+      tally[id] = el('dd', { text: '—' });
+      return el('div', {}, [ el('dt', { text: label }), tally[id] ]);
+    };
+    const strip = el('dl', { class: 'proto' }, [
+      cell('Problems', 'problems'), cell('Attempts', 'attempts'),
+      cell('Sent', 'sent'), cell('Hardest', 'top')
+    ]);
+
+    const notes = el('textarea', { class: 'input', text: editing ? editing.notes : '',
+      placeholder: 'What shut you down, what finally worked, how the skin held.' });
+
+    /* ── one problem ── */
+    function rowNode(p, i) {
+      const count = el('span', { text: String(p.attempts) });
+      const step = d => {
+        const nv = Math.max(1, Math.min(L.maxAttempts, p.attempts + d));
+        if (nv === p.attempts) return;
+        p.attempts = nv;
+        count.textContent = String(nv);
+        motion.pop(count, .7);
+        refresh();
+      };
+
+      const seg = el('div', { class: 'seg' }, [
+        el('button', { text: 'Worked', 'aria-pressed': String(!p.sent), onclick: () => setSent(false) }),
+        el('button', { text: 'Sent',   'aria-pressed': String(p.sent),  onclick: () => setSent(true) })
+      ]);
+      function setSent(v) {
+        if (p.sent === v) return;
+        p.sent = v;
+        [...seg.children].forEach((b, k) => b.setAttribute('aria-pressed', String(k === (v ? 1 : 0))));
+        refresh();
+      }
+
+      return el('section', { class: 'bp' }, [
+        el('div', { class: 'bp__hd' }, [
+          el('span', { class: 'bp__idx', text: 'PROBLEM ' + String(i + 1).padStart(2, '0') }),
+          problems.length > 1
+            ? el('button', { class: 'bp__x', 'aria-label': 'Remove problem ' + (i + 1),
+                onclick: () => remove(i) }, [ icon('x') ])
+            : null
+        ]),
+        el('div', { class: 'bp__body' }, [
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Grade' }),
+            el('select', { class: 'input', 'aria-label': `Problem ${i + 1} grade`,
+              onchange: e => { p.grade = e.target.value; refresh(); } },
+              L.grades.map(g => el('option', { value: g, text: g, selected: g === p.grade || null })))
+          ]),
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Attempts' }),
+            el('div', { class: 'stepper' }, [
+              el('button', { onclick: () => step(-1), 'aria-label': `Fewer attempts on problem ${i + 1}` }, [ icon('minus') ]),
+              count,
+              el('button', { onclick: () => step(1), 'aria-label': `More attempts on problem ${i + 1}` }, [ icon('plus') ])
+            ])
+          ]),
+          el('div', { class: 'field' }, [ el('label', { text: 'Outcome' }), seg ])
+        ])
+      ]);
+    }
+
+    /* indices and the remove button shift, so add / remove repaints the list */
+    function paintList() {
+      CT.ui.clear(list);
+      problems.forEach((p, i) => list.appendChild(rowNode(p, i)));
+    }
+
+    function add() {
+      const last = problems[problems.length - 1];
+      problems.push({ grade: last ? last.grade : L.defaultGrade, attempts: L.defaultAttempts, sent: false });
+      paintList();
+      motion.pop(list.lastChild, .96);
+      refresh();
+    }
+
+    function remove(i) {
+      problems.splice(i, 1);
+      paintList();
+      refresh();
+    }
+
+    function totals() {
+      return {
+        attempts: problems.reduce((a, p) => a + p.attempts, 0),
+        sent: problems.filter(p => p.sent).length,
+        top: CT.topGrade(problems)
+      };
+    }
+
+    function refresh() {
+      const t = totals();
+      tally.problems.textContent = String(problems.length);
+      tally.attempts.textContent = String(t.attempts);
+      tally.sent.textContent = String(t.sent);
+      tally.top.textContent = t.top || '—';
+
+      ctx.saveBtn.disabled = !problems.length;
+      ctx.summary.innerHTML =
+        `<b>${problems.length} ${problems.length === 1 ? 'problem' : 'problems'}</b> · ` +
+        `${t.attempts} ${t.attempts === 1 ? 'attempt' : 'attempts'} · ` +
+        `${t.sent} sent`;
+    }
+
+    paintList();
+
+    const node = el('div', { class: 'stack', style: 'gap:16px' }, [
+      strip,
+      list,
+      el('button', { class: 'btn btn--ghost', style: 'align-self:flex-start', onclick: add },
+        [ icon('plus'), 'Add a problem' ]),
+      el('div', { class: 'grip__foot', style: 'border-top:0;border-radius:var(--r-md)' }, [
+        icon('info'),
+        el('span', { text: `Limit bouldering is recruitment work — ${L.problemsHint} problems at your ceiling, ${L.restMin} minutes between goes.` })
+      ]),
+      el('div', { class: 'field' }, [ el('label', { text: 'Notes' }), notes ])
+    ]);
+
+    return {
+      node, refresh,
+      title: 'Limit bouldering',
+      sub: 'Maximal problems — log the attempts that went into each grade',
+      payload() {
+        return {
+          problems: problems.map(p => ({ grade: p.grade, attempts: p.attempts, sent: p.sent })),
+          notes: notes.value.trim()
+        };
+      },
+      savedSub() {
+        const t = totals();
+        return `${t.attempts} ${t.attempts === 1 ? 'attempt' : 'attempts'} across ` +
+               `${problems.length} ${problems.length === 1 ? 'problem' : 'problems'}` +
+               (t.sent ? ` · ${t.sent} sent.` : '.');
+      }
+    };
+  }
 })();
