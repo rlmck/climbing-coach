@@ -752,6 +752,59 @@ input[type=range]::-moz-range-thumb{
 .target .stepper{ margin-left:auto; }
 
 /* ═══════════════════════════════════════════════════════════
+   Sign in
+   The only screen you see signed out. One column, one button,
+   nothing to get wrong with cold hands in a car park.
+   ═══════════════════════════════════════════════════════════ */
+.authhost{ min-height:100vh; min-height:100dvh; }
+.authhost[hidden]{ display:none; }
+.authwrap{
+  min-height:100vh; min-height:100dvh;
+  display:grid; place-items:center;
+  padding:32px 20px calc(32px + env(safe-area-inset-bottom));
+}
+.authcard{
+  width:100%; max-width:392px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:var(--r-xl);
+  box-shadow:var(--sh-2);
+  padding:32px 30px 26px;
+}
+.authcard--quiet{ text-align:center; box-shadow:var(--sh-1); padding:38px 30px; }
+.authcard__brand{ display:flex; align-items:center; gap:9px; margin-bottom:22px; }
+.authcard__brand .mark{ width:24px; height:24px; }
+.authcard__t{ font-size:22px; font-weight:600; letter-spacing:-.028em; line-height:1.2; }
+.authcard__s{ font-size:14px; color:var(--ink-2); margin-top:7px; line-height:1.5; }
+.authcard__err{
+  display:flex; align-items:center; gap:8px;
+  padding:10px 13px; border-radius:var(--r-sm);
+  background:var(--clay-tint); color:var(--clay);
+  font-size:13.5px; line-height:1.4;
+}
+.authcard__err[hidden]{ display:none; }
+.authcard__ft{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin-top:22px; padding-top:18px; border-top:1px solid var(--line);
+}
+.authcard__ft .btn--quiet:last-child{ margin-left:auto; }
+.field[hidden]{ display:none; }
+
+/* sync state — quiet until it isn't */
+.rail__auth{ margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+.rail__sync{
+  display:flex; align-items:center; gap:8px;
+  padding:0 8px 8px; font-size:11.5px; color:var(--ink-4);
+}
+.rail__syncdot{
+  width:6px; height:6px; border-radius:50%; flex:none;
+  background:var(--spruce); opacity:.55;
+}
+.rail__sync.is-syncing{ color:var(--ember-ink); }
+.rail__sync.is-syncing .rail__syncdot{ background:var(--ember); opacity:1; animation:pulse 1.2s ease-in-out infinite; }
+@keyframes pulse{ 0%,100%{ opacity:1 } 50%{ opacity:.25 } }
+
+/* ═══════════════════════════════════════════════════════════
    Toasts
    ═══════════════════════════════════════════════════════════ */
 .toasts{

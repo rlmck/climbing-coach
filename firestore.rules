@@ -1,0 +1,131 @@
+rules_version = '2';
+
+/* ═══════════════════════════════════════════════════════════════
+   Coach — access control
+
+   Everything hangs off one document. An `athletes/{id}` record holds a
+   `members` array: the coach who owns it, plus the athlete themselves
+   once they've claimed it. Every piece of training data lives in a
+   subcollection of that record, so one membership check governs the lot.
+
+   Claiming is done without a Cloud Function: the coach writes the
+   athlete's email into `inviteEmail`, and a signed-in user whose *token*
+   carries that same email may add themselves to `members` — once, and
+   without changing anything else. The email in the token comes from the
+   identity provider, not from the client, so it can't be spoofed.
+
+   Nothing derived is stored. Prescribed loads and clean-session streaks
+   are replayed from the session list on the client, so there is no
+   number here that can disagree with the sessions behind it.
+   ═══════════════════════════════════════════════════════════════ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()  { return request.auth != null; }
+    function uid()       { return request.auth.uid; }
+    function tokenEmail() {
+      return signedIn() && request.auth.token.email_verified == true
+        ? request.auth.token.email : '';
+    }
+
+    function athleteDoc(aid) {
+      return get(/databases/$(database)/documents/athletes/$(aid)).data;
+    }
+    function isMember(aid) {
+      return signedIn() && uid() in athleteDoc(aid).members;
+    }
+
+    /* ── who you are ───────────────────────────────────────────
+       Private to you. A coach never reads these: the athlete record
+       carries its own display name, so a roster needs no user lookups. */
+    match /users/{userId} {
+      allow read: if signedIn() && uid() == userId;
+      allow create: if signedIn() && uid() == userId
+                    && request.resource.data.role in ['coach', 'client'];
+      allow update: if signedIn() && uid() == userId
+                    && request.resource.data.role == resource.data.role;   // no self-promotion
+      allow delete: if false;
+    }
+
+    /* ── the athlete record ────────────────────────────────── */
+    match /athletes/{aid} {
+
+      /* Members see it. So does the person it was addressed to, who
+         needs to find it before they can be a member. */
+      allow read: if signedIn() && (
+        uid() in resource.data.members ||
+        (tokenEmail() != '' && tokenEmail() == resource.data.inviteEmail)
+      );
+
+      /* Only a coach creates one, only for themselves, and the members
+         list starts as just them. */
+      allow create: if signedIn()
+        && request.resource.data.coachId == uid()
+        && request.resource.data.members == [uid()]
+        && request.resource.data.clientUid == null;
+
+      /* A member may edit the record, but never rewrite who can see it —
+         membership changes only through a claim. */
+      allow update: if signedIn() && uid() in resource.data.members
+        && request.resource.data.members == resource.data.members
+        && request.resource.data.coachId == resource.data.coachId;
+
+      /* The claim: the invited email adds itself, once, and touches
+         nothing else on the way in. */
+      allow update: if signedIn()
+        && tokenEmail() != ''
+        && tokenEmail() == resource.data.inviteEmail
+        && resource.data.clientUid == null
+        && request.resource.data.clientUid == uid()
+        && request.resource.data.members == resource.data.members.concat([uid()])
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['members', 'clientUid', 'claimedAt']);
+
+      /* Deleting an athlete would orphan every subcollection under it.
+         That belongs in a considered admin path, not a stray call. */
+      allow delete: if false;
+
+      /* ── training data ────────────────────────────────────
+         One membership check covers all of it. Dates are the join key
+         everywhere in the app, so they are required and immutable in
+         shape; the client replays the rest. */
+      match /slots/{slotId} {
+        allow read: if isMember(aid);
+        allow create, update: if isMember(aid)
+          && request.resource.data.date is string
+          && request.resource.data.type in ['strength', 'endurance', 'pe'];
+        allow delete: if isMember(aid);
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if isMember(aid);
+        allow create, update: if isMember(aid)
+          && request.resource.data.date is string
+          && request.resource.data.type in ['strength', 'endurance', 'pe'];
+        allow delete: if isMember(aid);
+      }
+
+      match /bodyweight/{day} {
+        allow read: if isMember(aid);
+        allow create, update: if isMember(aid)
+          && request.resource.data.kg is number
+          && request.resource.data.kg > 20 && request.resource.data.kg < 200;
+        allow delete: if isMember(aid);
+      }
+
+      match /maxHang/{testId} {
+        allow read, write: if isMember(aid);
+      }
+
+      match /criticalForce/{testId} {
+        allow read, write: if isMember(aid);
+      }
+    }
+
+    /* Anything not named above is closed. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v5';
+const CACHE = 'coach-v6';
 
 const SHELL = [
   './',
@@ -23,10 +23,14 @@ const SHELL = [
   './vendor/gsap.min.js',
   './vendor/Draggable.min.js',
   './vendor/Flip.min.js',
+  './js/config.js',
+  './js/firebase.js',
   './js/data.js',
   './js/store.js',
+  './js/repo.js',
   './js/ui.js',
   './js/charts.js',
+  './js/views/signin.js',
   './js/views/dashboard.js',
   './js/views/schedule.js',
   './js/views/progress.js',
@@ -74,11 +78,19 @@ self.addEventListener('fetch', e => {
     return res;
   };
 
-  /* fonts: cache-first, they never change */
-  if (/fonts\.(googleapis|gstatic)\.com/.test(req.url)) {
+  /* fonts and the pinned Firebase SDK: cache-first. Both are versioned
+     URLs that never change contents, and the SDK has to be on disk or
+     the app can't start without a connection — which is the one thing
+     offline-first can't afford. */
+  if (/fonts\.(googleapis|gstatic)\.com/.test(req.url) ||
+      /gstatic\.com\/firebasejs\//.test(req.url)) {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(save)));
     return;
   }
+
+  /* Firestore's own traffic is long-lived streams and must never be
+     touched by a cache. */
+  if (/(firestore|identitytoolkit|googleapis)\.com/.test(req.url)) return;
 
   /* everything else: network-first, cache as the offline fallback */
   e.respondWith(

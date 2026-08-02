@@ -18,7 +18,12 @@
         el('button', { class: 'card__act btn btn--primary btn--sm', onclick: () => CT.views.onboard() },
           [ icon('plus'), 'Onboard a client' ])
       ]),
-      el('div', { style: 'border-top:1px solid var(--line)' }, S.clients().map(clientRow))
+      el('div', { style: 'border-top:1px solid var(--line)' }, S.clients().length
+        ? S.clients().map(clientRow)
+        : [ el('div', { class: 'empty' }, [
+            el('h3', { text: 'No athletes yet' }),
+            el('p', { text: 'Onboard one and their block, plan and starting loads are set up in a single step.' })
+          ]) ])
     ]));
 
     S.clients().forEach(c => wrap.appendChild(targetCard(c)));

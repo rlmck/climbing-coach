@@ -14,6 +14,7 @@
   CT.views.onboard = function () {
     const form = {
       name: '',
+      email: '',
       bodyweight: '',
       start: CT.nextMonday(),
       weeks: 8,
@@ -76,6 +77,11 @@
 
     const nameInput = el('input', { class: 'input', type: 'text', placeholder: 'Full name',
       oninput: e => { form.name = e.target.value; sync(); } });
+    /* The invite. Whoever signs in on this address becomes this athlete —
+       the rules check the email on their identity token, not one they
+       typed, so the link can't be claimed by anyone else. */
+    const emailInput = el('input', { class: 'input', type: 'email', placeholder: 'them@example.com',
+      autocomplete: 'off', oninput: e => { form.email = e.target.value; sync(); } });
     const bwInput = el('input', { class: 'input', type: 'number', step: 0.1, min: 20, max: 200,
       placeholder: 'Optional', oninput: e => { form.bodyweight = e.target.value; } });
     const startInput = el('input', { class: 'input', type: 'date', value: form.start,
@@ -110,7 +116,7 @@
         : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
     }
 
-    function create() {
+    async function create() {
       const c = CT.createClient({
         name: form.name,
         bodyweight: form.bodyweight ? +parseFloat(form.bodyweight).toFixed(1) : null,
@@ -124,11 +130,33 @@
         },
         note: form.note.trim()
       });
+
+      /* The record and its whole starting plan go up in one batch, so a
+         half-built athlete is never a state anyone can see. Until it
+         lands, the button says what it's doing. */
+      if (CT.repo.enabled) {
+        saveBtn.disabled = true;
+        summary.textContent = 'Creating ' + c.name + '…';
+        try {
+          const id = await CT.repo.createAthlete(c, form.email);
+          c.id = id;
+        } catch (e) {
+          saveBtn.disabled = false;
+          summary.textContent = 'Couldn’t create ' + c.name;
+          toast('Couldn’t create that athlete', CT.fb.message(e));
+          return;
+        }
+        if (c.bodyweight && c.bodyweight.length) CT.repo.saveBodyweight(c, c.bodyweight[0]);
+      }
+
       S.addClient(c);
       CT.state.activeClient = c.id;
       CT.sheet.close();
       CT.render(false);
-      toast(c.name + ' is set up', `${c.targets.strength} strength and ${c.targets.endurance} endurance a week, starting ${dt.short(c.block.start)}.`);
+      toast(c.name + ' is set up',
+        form.email && CT.repo.enabled
+          ? `Invited ${form.email} — the athlete is theirs when they sign in.`
+          : `${c.targets.strength} strength and ${c.targets.endurance} endurance a week, starting ${dt.short(c.block.start)}.`);
     }
 
     CT.sheet.open({
@@ -141,7 +169,11 @@
             field('Name', nameInput),
             field('Starting bodyweight', el('div', { class: 'row', style: 'gap:9px' }, [
               bwInput, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg' })
-            ]), 'They can update this any time.')
+            ]), 'They can update this any time.'),
+            CT.repo.enabled
+              ? field('Their email', emailInput,
+                  'They sign in on this address and this athlete becomes theirs. Leave it blank to keep the record to yourself for now.')
+              : null
           ])
         ]),
         section('Block', [

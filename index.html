@@ -22,7 +22,10 @@
 </head>
 <body>
 
-<div class="app" id="app">
+<!-- signed out, or still loading: the only thing on screen -->
+<div class="authhost" id="authHost" hidden></div>
+
+<div class="app" id="app" hidden>
 
   <!-- ───────────────────────── sidebar ───────────────────────── -->
   <aside class="rail" id="rail">
@@ -57,7 +60,7 @@
 </div>
 
 <!-- phone navigation: hidden at desktop widths -->
-<nav class="tabbar" id="tabbar" aria-label="Sections"></nav>
+<nav class="tabbar" id="tabbar" aria-label="Sections" hidden></nav>
 <div class="rail-scrim" id="railScrim" hidden></div>
 
 <!-- sheet host -->
@@ -71,10 +74,14 @@
 <script src="vendor/Draggable.min.js"></script>
 <script src="vendor/Flip.min.js"></script>
 
+<script src="js/config.js"></script>
+<script src="js/firebase.js"></script>
 <script src="js/data.js"></script>
 <script src="js/store.js"></script>
+<script src="js/repo.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/charts.js"></script>
+<script src="js/views/signin.js"></script>
 <script src="js/views/dashboard.js"></script>
 <script src="js/views/schedule.js"></script>
 <script src="js/views/progress.js"></script>

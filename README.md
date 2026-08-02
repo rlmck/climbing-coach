@@ -85,6 +85,50 @@ empty states everywhere they have no history yet.
 dashboard tile or the Progress screen. One reading per day; logging the
 same day again replaces it.
 
+## The backend
+
+Firebase project **`coach-climbing-app`**, Firestore in **europe-west2**.
+
+`js/config.js` decides which world the app runs in. Leave `apiKey` empty
+and it runs on the seeded mock data exactly as the prototype always did —
+no network, nothing saved. Fill it in and the same UI runs against
+Firestore. There is no third mode and no build step either way.
+
+**Shape.** Everything hangs off one document:
+
+```
+users/{uid}                      role, name — private to that user
+athletes/{id}                    members[], coachId, clientUid, inviteEmail,
+                                 block, targets, template, startLoads
+  …/slots/{id}                   week, type, date, sessionId
+  …/sessions/{id}                date, type, mode, reps|problems|fields, notes
+  …/bodyweight/{yyyy-mm-dd}      one reading per day — the date is the key
+  …/maxHang/{id}  …/criticalForce/{id}
+```
+
+`members` is the only thing access control reads, so one check governs
+every subcollection. **Nothing derived is stored** — prescribed loads and
+clean-session streaks are replayed from the session list on the client,
+so no stored number can ever disagree with the sessions behind it.
+
+**Invites, without a Cloud Function.** A coach onboards an athlete with
+their email, which lands in `inviteEmail`. When someone signs in on that
+address, the rules let them add themselves to `members` — once, and
+without touching anything else. The email is read off their identity
+token, not from anything they typed.
+
+**Offline** is Firestore's persistent cache doing the work. Writes queue
+locally and fire their snapshot immediately, so a session logged in a
+basement is on screen at once and syncs when signal returns. The rail
+says "Saving…" until it has. Signing in is the one thing that needs a
+connection, and the sign-in screen says so.
+
+**Writes are optimistic twice over.** The store changes `CT.world` now,
+as it always did, and hands the same change to `js/repo.js` to persist;
+the snapshot listener then rebuilds `CT.world` from what is actually
+stored. Ids are minted client-side so the optimistic copy and the
+document that lands are one record, never two.
+
 ## Deliberately placeholder
 
 Endurance and power-endurance sub-forms (field sets are a first guess),
@@ -96,12 +140,18 @@ a 24-rep decay curve.
 
 ```
 index.html
+firebase.json          hosting, emulators
+firestore.rules        all access control — the file worth reading
+firestore.indexes.json
 assets/css/app.css     tokens, then components in screen order
+js/config.js           which backend, if any
+js/firebase.js         the SDK, loaded from a CDN by dynamic import
+js/repo.js             Firestore in, CT.world out
 js/data.js             the mock world, generated relative to today's date
 js/store.js            derived state, the progression rule, rest-day rules
 js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
 js/charts.js           hand-rolled SVG charts
-js/views/              dashboard · schedule · progress · coach
+js/views/              signin · dashboard · schedule · progress · coach
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,

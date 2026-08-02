@@ -33,13 +33,18 @@
       }, [ icon(r.icon), r.label ]));
     });
 
+    /* Signed in, an athlete is only ever themselves — there is nobody to
+       switch to and no pretending otherwise. A coach still switches
+       between their own view and each athlete's. */
+    const isClient = CT.repo.enabled && CT.repo.profile && CT.repo.profile.role === 'client';
     const sw = CT.ui.clear(CT.ui.$('#switcher'));
-    const people = [CT.world.coach, ...S.clients()];
+    const people = isClient ? S.clients() : [CT.world.coach, ...S.clients()];
     people.forEach(p => {
       sw.appendChild(el('button', {
         class: 'who', 'aria-pressed': String(CT.state.viewAs === p.id),
+        disabled: isClient || null,
         onclick: () => {
-          if (CT.state.viewAs === p.id) return;
+          if (isClient || CT.state.viewAs === p.id) return;
           S.setUser(p.id);
           CT.go(p.id === 'coach' ? 'clients' : 'dashboard');
         }
@@ -50,12 +55,26 @@
       ]));
     });
 
+    /* Signed out is a state worth being able to reach; and when a write
+       hasn't landed yet, say so rather than leaving it to be discovered. */
+    const foot = CT.ui.$('.rail__foot');
+    CT.ui.$$('.rail__auth', foot).forEach(n => n.remove());
+    if (CT.repo.enabled) {
+      foot.appendChild(el('div', { class: 'rail__auth' }, [
+        el('p', { id: 'syncDot', class: 'rail__sync' + (CT.repo.syncing ? ' is-syncing' : '') },
+          [ el('span', { class: 'rail__syncdot' }),
+            el('span', { text: CT.repo.syncing ? 'Saving…' : 'All saved' }) ]),
+        el('button', { class: 'btn btn--quiet btn--sm', style: 'width:100%;justify-content:flex-start',
+          text: 'Sign out', onclick: () => CT.signOut() })
+      ]));
+    }
+
     /* quick logging belongs to the athlete, not the coach */
     const c = S.client();
-    CT.ui.$('.rail__log').style.display = S.isCoach() ? 'none' : '';
+    CT.ui.$('.rail__log').style.display = (S.isCoach() || !c) ? 'none' : '';
     CT.ui.$$('.quick').forEach(b => {
       const type = b.dataset.log;
-      b.style.display = (type === 'pe' && !S.inPEPhase(c)) ? 'none' : '';
+      b.style.display = (!c || (type === 'pe' && !S.inPEPhase(c))) ? 'none' : '';
       b.onclick = () => CT.openLog(type, {});
     });
   }
@@ -109,9 +128,9 @@
       onclick: () => toggleRail()
     }, [ icon('people') ]));
 
-    bar.appendChild(el('h1', { class: 'h-page', text: coachViewing ? `${c.name} · ${r.title}` : r.title }));
+    bar.appendChild(el('h1', { class: 'h-page', text: coachViewing && c ? `${c.name} · ${r.title}` : r.title }));
 
-    if (CT.state.route !== 'clients') {
+    if (CT.state.route !== 'clients' && c) {
       bar.appendChild(el('span', { class: 'chip', style: 'margin-left:2px',
         text: `Week ${S.currentWeek(c)}/${c.block.weeks}` }));
     }
@@ -131,6 +150,24 @@
     const host = CT.ui.$('#view');
     const c = S.client();
     const build = node => {
+      /* Nobody to show. A coach hasn't onboarded anyone yet; an athlete
+         is signed in but their coach hasn't invited this address, or
+         hasn't finished setting them up. */
+      if (!c && CT.state.route !== 'clients') {
+        const coachSide = S.isCoach();
+        node.appendChild(el('div', { class: 'card empty' }, [
+          el('h3', { text: coachSide ? 'No athletes yet' : 'Nothing here yet' }),
+          el('p', { text: coachSide
+            ? 'Onboard an athlete from the Clients screen and their block appears here.'
+            : 'Your coach hasn’t set up a block on this email address yet. It’ll appear here the moment they do — no need to sign in again.' }),
+          coachSide
+            ? el('button', { class: 'btn btn--primary', style: 'margin-top:16px',
+                text: 'Go to Clients', onclick: () => CT.go('clients') })
+            : null
+        ]));
+        return;
+      }
+
       /* coach context bar sits above the client's own screens */
       if (S.isCoach() && CT.state.route !== 'clients') {
         node.appendChild(el('div', { class: 'asbar', style: 'margin:0 0 16px' }, [
@@ -160,6 +197,10 @@
   /* ── log entry points ───────────────────────────────────── */
   CT.openLog = function (type, opts) {
     const c = S.client();
+    if (!c) {
+      toast('No block set up yet', 'There’s nothing to log against until your coach starts one.');
+      return;
+    }
     if (S.isCoach()) {
       toast('Coaches don’t log sessions', `Switch to ${c.name} in the corner to log on their behalf.`);
       return;
@@ -209,27 +250,113 @@
       document.addEventListener(t, e => e.preventDefault(), { passive: false }));
   }
 
+  /* ── which screen the whole app is on ────────────────────
+     Three states, and only ever one of them: the sign-in card, a quiet
+     loading state, or the app itself. */
+  function screen(name, build) {
+    const authHost = CT.ui.$('#authHost'), app = CT.ui.$('#app'), tabs = CT.ui.$('#tabbar');
+    const showApp = name === 'app';
+    app.hidden = !showApp;
+    tabs.hidden = !showApp;
+    authHost.hidden = showApp;
+    if (!showApp) { CT.ui.clear(authHost); build(authHost); }
+  }
+
+  function showSignIn() {
+    if (CT.sheet) CT.sheet.close(true);
+    screen('auth', host => CT.views.signin(host, {}));
+  }
+
+  function showLoading(text) {
+    screen('auth', host => host.appendChild(
+      el('div', { class: 'authwrap' }, [
+        el('div', { class: 'authcard authcard--quiet' }, [
+          el('p', { class: 'eyebrow', text: 'Coach' }),
+          el('p', { class: 'authcard__s', style: 'margin-top:10px', text: text || 'Loading…' })
+        ])
+      ])
+    ));
+  }
+
+  /* ── who the signed-in person is ─────────────────────────
+     A coach lands on their roster; an athlete lands on their own
+     dashboard and never sees anyone else's. */
+  function enterApp() {
+    const p = CT.repo.profile;
+    if (p) {
+      const ids = Object.keys(CT.world.clients);
+      if (p.role === 'client') {
+        /* null, not 'coach' — an athlete waiting on an invite must not
+           fall through into the coach's screens */
+        const mine = p.athleteId && CT.world.clients[p.athleteId] ? p.athleteId : ids[0] || null;
+        CT.state.viewAs = mine;
+        CT.state.activeClient = mine;
+        if (CT.state.route === 'clients') CT.state.route = 'dashboard';
+      } else {
+        CT.state.viewAs = 'coach';
+        if (!CT.state.activeClient || !CT.world.clients[CT.state.activeClient]) CT.state.activeClient = ids[0] || null;
+        CT.state.route = ids.length ? CT.state.route : 'clients';
+      }
+    }
+    screen('app');
+    render(false);
+    firstPaint();
+  }
+
+  function firstPaint() {
+    /* The shell settles, then the content arrives. The rail is skipped on
+       phones — there it's a drawer whose open and closed states are CSS
+       transforms, and an inline transform left by a tween would outrank
+       them and strand it off-screen. */
+    if (!motion.on) return;
+    const phone = window.matchMedia('(max-width: 900px)').matches;
+    if (!phone) {
+      gsap.from('.rail', { x: -14, opacity: 0, duration: .6, ease: 'power3.out', clearProps: 'transform,opacity' });
+    }
+    gsap.from('.topbar > *', { y: -8, opacity: 0, duration: .5, stagger: .05,
+      ease: 'power3.out', delay: .1, clearProps: 'transform,opacity' });
+  }
+
+  CT.signOut = async function () {
+    try { await CT.fb.fn.signOut(CT.fb.auth); }
+    catch (e) { toast('Couldn’t sign out', CT.fb.message(e)); }
+  };
+
   /* ── boot ───────────────────────────────────────────────── */
-  function boot() {
+  async function boot() {
     lockGestures();
     const main = CT.ui.$('#main'), bar = CT.ui.$('#topbar');
     main.addEventListener('scroll', () => bar.classList.toggle('is-stuck', main.scrollTop > 4), { passive: true });
     CT.ui.$('#railScrim').addEventListener('click', () => toggleRail(false));
 
-    render(false);
+    /* No backend configured: the seeded world, in memory, as ever. */
+    if (!CT.CONFIG.live) { enterApp(); return; }
 
-    /* First paint: the shell settles, then the content arrives.
-       The rail is skipped on phones — there it's a drawer whose open and
-       closed states are CSS transforms, and an inline transform left by a
-       tween would outrank them and strand it off-screen. */
-    if (motion.on) {
-      const phone = window.matchMedia('(max-width: 900px)').matches;
-      if (!phone) {
-        gsap.from('.rail', { x: -14, opacity: 0, duration: .6, ease: 'power3.out', clearProps: 'transform,opacity' });
-      }
-      gsap.from('.topbar > *', { y: -8, opacity: 0, duration: .5, stagger: .05,
-        ease: 'power3.out', delay: .1, clearProps: 'transform,opacity' });
+    showLoading('Opening your training…');
+    try {
+      await CT.fb.init();
+    } catch (e) {
+      console.error('[boot] firebase init:', e);
+      showLoading('Couldn’t reach the server. Reload when you have a connection.');
+      return;
     }
+
+    /* Fires on load with the restored session, and again on every sign-in
+       and sign-out for the life of the tab. */
+    CT.fb.fn.onAuthStateChanged(CT.fb.auth, async user => {
+      if (!user) { CT.repo.stop(); showSignIn(); return; }
+      showLoading('Loading your training…');
+      try {
+        await CT.repo.start(user);
+      } catch (e) {
+        console.error('[boot] repo start:', e);
+        toast('Couldn’t load your training', CT.fb.message(e));
+      }
+      enterApp();
+    });
+
+    /* The sync indicator lives in the rail, so it repaints with it. */
+    CT.repo.onSync = () => { if (CT.ui.$('#syncDot')) renderRail(); };
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

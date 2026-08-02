@@ -5,6 +5,18 @@
 (function () {
   const CT = window.CT, dt = CT.dt;
 
+  /* The persistence seam. repo.js replaces this wholesale when it loads;
+     until then — and permanently, if no backend is configured — every
+     call is a no-op and the app runs on the seeded world in memory,
+     exactly as the prototype always did. */
+  CT.repo = CT.repo || {
+    enabled: false,
+    newId: () => 'loc_' + Math.random().toString(36).slice(2, 10),
+    saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
+    saveBodyweight() {}, deleteBodyweight() {}, saveAthlete() {},
+    createAthlete: async c => c.id
+  };
+
   const state = CT.state = {
     viewAs: 'maks',          // 'coach' | 'maks' | 'jade'
     activeClient: 'maks',    // whose data is on screen
@@ -186,17 +198,23 @@
       return out.slice(0, 2);   // guidance, not a lecture
     },
 
-    /* ── mutations ───────────────────────────────────────── */
+    /* ── mutations ─────────────────────────────────────────
+       Each of these does the same two things: change CT.world now, so
+       the screen is right on the next frame, and hand the change to the
+       repo to persist. With no backend configured the repo calls are
+       no-ops and the app behaves exactly as the prototype did. Ids come
+       from the repo so the local record and the stored document are one
+       record, not two. */
     /* Logging a session on any date within the block. Attaches to a matching
        open slot on that date if one exists, otherwise creates one so the
        calendar and the log always agree. */
     logSession(c, session) {
-      session.id = 'ses_' + Math.random().toString(36).slice(2, 9);
+      session.id = CT.repo.newId(c.id, 'sessions');
       c.sessions.push(session);
 
       let slot = c.slots.find(s => s.date === session.date && s.type === session.type && !s.sessionId);
       if (!slot) {
-        slot = { id:'slot_' + Math.random().toString(36).slice(2,9), week: S.weekOf(c, session.date),
+        slot = { id: CT.repo.newId(c.id, 'slots'), week: S.weekOf(c, session.date),
                  type: session.type, date: session.date, status:'completed', sessionId:null, adhoc:true };
         c.slots.push(slot);
       }
@@ -204,6 +222,8 @@
       slot.status = 'completed';
 
       if (session.type === 'strength') S.recomputeStrength(c);
+      CT.repo.saveSession(c, session);
+      CT.repo.saveSlot(c, slot);
       return { session, slot };
     },
 
@@ -218,6 +238,8 @@
       if (slot && movedTo) { slot.date = movedTo; slot.week = S.weekOf(c, movedTo); }
 
       if (ses.type === 'strength') S.recomputeStrength(c);
+      CT.repo.saveSession(c, ses);
+      if (slot && movedTo) CT.repo.saveSlot(c, slot);
       return ses;
     },
 
@@ -230,10 +252,16 @@
       if (slot) {
         slot.sessionId = null;
         /* a slot invented to hold an unplanned session has nothing left to show */
-        if (slot.adhoc) c.slots.splice(c.slots.indexOf(slot), 1);
-        else slot.status = slot.date < dt.iso(dt.today()) ? 'missed' : 'suggested';
+        if (slot.adhoc) {
+          c.slots.splice(c.slots.indexOf(slot), 1);
+          CT.repo.deleteSlot(c, slot.id);
+        } else {
+          slot.status = slot.date < dt.iso(dt.today()) ? 'missed' : 'suggested';
+          CT.repo.saveSlot(c, slot);
+        }
       }
       if (ses.type === 'strength') S.recomputeStrength(c);
+      CT.repo.deleteSession(c, id);
       return true;
     },
 
@@ -241,6 +269,7 @@
       const i = c.bodyweight.findIndex(b => b.date === iso);
       if (i < 0) return false;
       c.bodyweight.splice(i, 1);
+      CT.repo.deleteBodyweight(c, iso);
       return true;
     },
 
@@ -257,6 +286,8 @@
       slot.week = S.weekOf(c, toISO);
       const ses = slot.sessionId && S.session(c, slot.sessionId);
       if (ses) ses.date = toISO;
+      CT.repo.saveSlot(c, slot);
+      if (ses) CT.repo.saveSession(c, ses);
       return true;
     },
 
@@ -266,6 +297,7 @@
       const i = c.slots.findIndex(s => s.id === slotId);
       if (i < 0 || c.slots[i].sessionId) return false;
       c.slots.splice(i, 1);
+      CT.repo.deleteSlot(c, slotId);
       return true;
     },
 
@@ -273,9 +305,10 @@
        nothing to log until the session has actually happened. */
     addPlannedSlot(c, iso, type) {
       if (S.dayIsFull(c, iso)) return null;
-      const slot = { id: 'slot_' + Math.random().toString(36).slice(2,9), week: S.weekOf(c, iso),
+      const slot = { id: CT.repo.newId(c.id, 'slots'), week: S.weekOf(c, iso),
                      type, date: iso, status: 'suggested', sessionId: null };
       c.slots.push(slot);
+      CT.repo.saveSlot(c, slot);
       return slot;
     },
 
@@ -295,9 +328,11 @@
           const spare = c.slots.filter(s => s.week === w && s.type === key && !s.sessionId).pop();
           if (!spare) break;
           c.slots.splice(c.slots.indexOf(spare), 1);
+          CT.repo.deleteSlot(c, spare.id);
           diff++;
         }
       }
+      CT.repo.saveAthlete(c, { targets: c.targets });
     },
 
     /* Spread across the week: the emptiest day takes it, earliest breaks a
@@ -316,7 +351,8 @@
 
     addClient(c) { CT.world.clients[c.id] = c; return c; },
 
-    /* one reading per day — weighing yourself twice replaces the entry */
+    /* one reading per day — weighing yourself twice replaces the entry,
+       which is why the date is the document id */
     logBodyweight(c, iso, kg) {
       const found = c.bodyweight.find(b => b.date === iso);
       if (found) found.kg = kg;
@@ -324,6 +360,7 @@
         c.bodyweight.push({ date: iso, kg });
         c.bodyweight.sort((a,b) => a.date < b.date ? -1 : 1);
       }
+      CT.repo.saveBodyweight(c, { date: iso, kg });
       return kg;
     },
 
