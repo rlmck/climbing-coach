@@ -48,7 +48,8 @@
     <div class="rail__foot">
       <p class="eyebrow eyebrow--rail">Viewing as</p>
       <div class="switcher" id="switcher" role="group" aria-label="Switch user"></div>
-      <p class="rail__note">Prototype — mock data, nothing is saved.</p>
+      <!-- only true in mock mode; app.js hides it against a real backend -->
+      <p class="rail__note" id="mockNote" hidden>Prototype — mock data, nothing is saved.</p>
     </div>
   </aside>
 

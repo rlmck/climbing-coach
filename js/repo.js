@@ -24,6 +24,8 @@
     enabled: false,
     user: null,
     profile: null,
+    /* why start() gave up, when it did: 'unverified' | 'no-invite' */
+    blocked: null,
     /* true while any local write has not been acknowledged by the server */
     syncing: false,
     onSync: null,
@@ -160,24 +162,38 @@
 
   /* ═════════════════ identity ═════════════════ */
 
-  /* A profile is created on first sign-in. Someone whose email was
-     already written onto an athlete record by a coach is that athlete;
-     anyone else is a coach with an empty roster. */
+  /* A profile is created on first sign-in, and only for someone a coach
+     was already expecting. No invite, no profile — not an empty one, not
+     a coach one, nothing. Holding an account is not the same as having
+     somewhere to put it, and the caller turns that into a dead end.
+
+     Signing up before your coach has got round to inviting you is a real
+     thing to do, so this is checked afresh every sign-in rather than
+     being decided once. Get invited later and the next sign-in works. */
   async function loadProfile(user) {
     const { doc, getDoc, setDoc, serverTimestamp } = F();
     const ref = doc(fb().db, 'users', user.uid);
     const snap = await getDoc(ref);
     if (snap.exists()) return Object.assign({ uid: user.uid }, snap.data());
 
+    /* Claiming is gated on a verified address, in the rules and here.
+       Without that, anyone could guess an invited email, sign up on it
+       first and walk off with the athlete record addressed to them.
+       Only the claim needs this — someone who already has a profile is
+       past this gate for good. */
+    if (!user.emailVerified) { repo.blocked = 'unverified'; return null; }
+
     const claimed = await claimInvite(user);
+    if (!claimed) { repo.blocked = 'no-invite'; return null; }
+
     const name = user.displayName || (user.email || '').split('@')[0];
     const profile = {
-      role: claimed ? 'client' : 'coach',
+      role: 'client',
       name: name.split(/\s+/)[0],
       full: name,
       initials: CT.initialsOf(name),
       email: user.email || null,
-      athleteId: claimed || null,
+      athleteId: claimed,
       createdAt: serverTimestamp()
     };
     await setDoc(ref, profile);
@@ -213,7 +229,11 @@
     repo.stop();
     repo.enabled = true;
     repo.user = user;
-    repo.profile = await loadProfile(user);
+    repo.blocked = null;
+
+    const profile = await loadProfile(user);
+    if (!profile) { repo.stop(); return null; }     // an account with nowhere to go
+    repo.profile = profile;
     repo._firstDone = false;
 
     CT.world.clients = {};
@@ -238,6 +258,8 @@
     repo.user = null;
     repo.profile = null;
     repo._firstDone = false;
+    /* `blocked` deliberately survives — stop() is what start() calls on
+       its way out, and the reason it gave up is the whole message. */
   };
 
   /* ═════════════════ writing ═════════════════

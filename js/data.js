@@ -318,7 +318,16 @@
 
   CT.world = {
     coach: { id:'coach', name:'Ross', full:'Ross Lewis', initials:'RL', role:'coach' },
-    clients: {
+    clients: {}
+  };
+
+  /* Everything below this line is the prototype's world and only the
+     prototype's. Against a real backend these two would be athletes who
+     don't exist, sitting in memory waiting for a screen to leak them
+     onto — so they are never built at all. */
+  if (CT.CONFIG && CT.CONFIG.live) return;
+
+  Object.assign(CT.world.clients, {
       /* Maks — final week of an 8-week block, deep in power endurance.
          Authored so the strength log opens one clean session away from
          +2.5 kg on the drag and freshly reset on the half-crimp, and so
@@ -359,6 +368,5 @@
         mvc: 33, mvcGain: 2.1, cfPct: 0.58,
         coachNote: 'Base phase — keep the endurance conversational. Volume over intensity.'
       })
-    }
-  };
+  });
 })();

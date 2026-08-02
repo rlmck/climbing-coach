@@ -36,13 +36,28 @@ service cloud.firestore {
       return signedIn() && uid() in athleteDoc(aid).members;
     }
 
+    /* A coach is someone whose profile already says so. Nothing reachable
+       from the app can write that word, so the set of coaches only ever
+       changes by someone going into the console and meaning it. */
+    function isCoach() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid()))
+        && get(/databases/$(database)/documents/users/$(uid())).data.role == 'coach';
+    }
+
     /* ── who you are ───────────────────────────────────────────
        Private to you. A coach never reads these: the athlete record
-       carries its own display name, so a roster needs no user lookups. */
+       carries its own display name, so a roster needs no user lookups.
+
+       Anyone can hold a Firebase Auth account — sign-up can't be closed
+       off from the client. What it can't do is become anything. A profile
+       created from the app is a client, always; there is no path here
+       that mints a coach. An account with no invite waiting for it ends
+       up with a profile that reads nothing and owns nothing. */
     match /users/{userId} {
       allow read: if signedIn() && uid() == userId;
       allow create: if signedIn() && uid() == userId
-                    && request.resource.data.role in ['coach', 'client'];
+                    && request.resource.data.role == 'client';
       allow update: if signedIn() && uid() == userId
                     && request.resource.data.role == resource.data.role;   // no self-promotion
       allow delete: if false;
@@ -59,8 +74,10 @@ service cloud.firestore {
       );
 
       /* Only a coach creates one, only for themselves, and the members
-         list starts as just them. */
-      allow create: if signedIn()
+         list starts as just them. Being a coach is the gate: without it a
+         signed-in stranger could fill this collection with records nobody
+         asked for. */
+      allow create: if isCoach()
         && request.resource.data.coachId == uid()
         && request.resource.data.members == [uid()]
         && request.resource.data.clientUid == null;

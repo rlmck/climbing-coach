@@ -55,6 +55,10 @@
       ]));
     });
 
+    /* The prototype's disclaimer is only honest in mock mode. Against a
+       real backend the opposite is true: everything here is saved. */
+    CT.ui.$('#mockNote').hidden = CT.CONFIG.live;
+
     /* Signed out is a state worth being able to reach; and when a write
        hasn't landed yet, say so rather than leaving it to be discovered. */
     const foot = CT.ui.$('.rail__foot');
@@ -347,7 +351,18 @@
       if (!user) { CT.repo.stop(); showSignIn(); return; }
       showLoading('Loading your training…');
       try {
-        await CT.repo.start(user);
+        const profile = await CT.repo.start(user);
+        /* Signed in, but with nowhere to land: either the address hasn't
+           been confirmed yet, or no coach has set anything up on it.
+           Different problems, different screens — telling someone there's
+           no invite when there is one sends them round a loop. */
+        if (!profile) {
+          const why = CT.repo.blocked;
+          screen('auth', h => why === 'unverified'
+            ? CT.views.verifyEmail(h, user)
+            : CT.views.noInvite(h, user));
+          return;
+        }
       } catch (e) {
         console.error('[boot] repo start:', e);
         toast('Couldn’t load your training', CT.fb.message(e));

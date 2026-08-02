@@ -115,7 +115,22 @@ so no stored number can ever disagree with the sessions behind it.
 their email, which lands in `inviteEmail`. When someone signs in on that
 address, the rules let them add themselves to `members` — once, and
 without touching anything else. The email is read off their identity
-token, not from anything they typed.
+token, not from anything they typed, and it has to be **verified** —
+otherwise anyone could guess an invited address, sign up on it first, and
+walk off with the athlete record waiting there.
+
+**Invite-only.** Anyone can hold a Firebase Auth account; sign-up can't be
+closed off from the client. What an account can't do is *become*
+anything. A profile created from the app is a `client`, always — there is
+no path in the rules that mints a coach — and creating an athlete record
+requires already being one. Sign in with no invite waiting and the app
+writes nothing at all, not even an empty profile, and shows a dead end.
+The check runs afresh on every sign-in, so signing up before your coach
+gets round to inviting you costs nothing: the next sign-in just works.
+
+**Adding a coach** is therefore a deliberate act, done in the Firestore
+console: create `users/{uid}` with `role: 'coach'` for an account that
+already exists. Nothing in the app will do it for you, by design.
 
 **Offline** is Firestore's persistent cache doing the work. Writes queue
 locally and fire their snapshot immediately, so a session logged in a
