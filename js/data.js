@@ -58,7 +58,39 @@
     { id:'half', name:'Half-Crimp',        short:'Half-crimp', edge:'20 mm' }
   ];
 
-  CT.PROTOCOL = { hangSec:7, repsPerGrip:3, reserveSec:2, restSec:180, increment:2.5, cleanTarget:2 };
+  CT.PROTOCOL = {
+    hangSec:7, repsPerGrip:3, reserveSec:2, restSec:180, increment:2.5, cleanTarget:2,
+    /* A max hang is a max hang — you can do one of those, once. Training
+       happens underneath it, and 80% of the total load on the fingers is
+       where this block puts it. Total, not added: the bodyweight is on
+       the edge whether or not anybody wrote it down, so taking 80% of
+       the added weight alone would prescribe something far nearer
+       maximal than it looks. */
+    workingPct: 0.8,
+    maxReps: 10
+  };
+
+  /* Added load for a working hang, from a max hang and the bodyweight it
+     was pulled at. 70 kg bodyweight hanging +30 kg is 100 kg through the
+     fingers; 80% of that is 80 kg, which is +10 kg on the harness.
+
+     Negative is a real answer and not an error — it means the working
+     load is below bodyweight and wants a pulley taking some off. */
+  /* Added load, written the way it is worn. A working load below
+     bodyweight is a real prescription — it means take some off with a
+     pulley — and "+-4.5 kg" is not how anyone says that. */
+  CT.fmtLoad = function (v, decimals) {
+    if (typeof v !== 'number' || !isFinite(v)) return '—';
+    const d = decimals == null ? 1 : decimals;
+    return (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + ' kg';
+  };
+
+  CT.workingLoad = function (bodyweight, maxAdded, pct) {
+    const bw = +bodyweight, max = +maxAdded;
+    if (!isFinite(bw) || !isFinite(max)) return null;
+    const p = isFinite(pct) ? pct : CT.PROTOCOL.workingPct;
+    return Math.round(((bw + max) * p - bw) * 2) / 2;      // nearest 0.5 kg
+  };
 
   /* Two ways to spend a strength session. Only the hangboard carries a
      prescribed load, so only it feeds the progression rule — limit
@@ -552,6 +584,15 @@
       targets: Object.assign({ strength:1, endurance:3, pe:1 }, cfg.targets),
       template: cfg.template,
       startLoads: { tfd: cfg.start.tfd, half: cfg.start.half },
+      /* The max the opening loads were a share of, run backwards from
+         them — so the mock world carries the same basis a real athlete's
+         record does and the strength sheet has something true to say. */
+      maxLoads: {
+        tfd:  +(((cfg.bw + cfg.start.tfd)  / CT.PROTOCOL.workingPct) - cfg.bw).toFixed(1),
+        half: +(((cfg.bw + cfg.start.half) / CT.PROTOCOL.workingPct) - cfg.bw).toFixed(1)
+      },
+      refBodyweight: cfg.bw,
+      workingPct: CT.PROTOCOL.workingPct,
       prescribed: { tfd: grip.tfd.weight, half: grip.half.weight },
       cleanStreak: { tfd: grip.tfd.streak, half: grip.half.streak },
       slots, sessions, bodyweight, maxHang, criticalForce,
@@ -594,11 +635,22 @@
       template,
       startLoads:  { tfd: input.loads.tfd,  half: input.loads.half },
       prescribed:  { tfd: input.loads.tfd,  half: input.loads.half },
+      /* What the working loads were worked out from, kept so the screens
+         can say "80% of a +30 kg max at 71 kg" rather than presenting a
+         number with no history. Not derived from again — once the block
+         is running, the clean-session rule owns the load. */
+      maxLoads: input.maxLoads ? { tfd: input.maxLoads.tfd, half: input.maxLoads.half } : null,
+      refBodyweight: input.bodyweight || null,
+      workingPct: input.workingPct || CT.PROTOCOL.workingPct,
       cleanStreak: { tfd: 0, half: 0 },
       slots: buildSlots(blockStart, weeks, template, peFromWeek),
       sessions: [],
       bodyweight: input.bodyweight ? [{ date: dt.iso(today), kg: input.bodyweight }] : [],
-      maxHang: [],
+      /* The max the block was built on is a test result like any other,
+         so it goes on the chart where the next one will join it. */
+      maxHang: input.maxLoads
+        ? [{ date: dt.iso(today), tfd: input.maxLoads.tfd, half: input.maxLoads.half }]
+        : [],
       criticalForce: [],
       coachNote: input.note || '',
       isNew: true

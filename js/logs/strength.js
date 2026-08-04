@@ -229,9 +229,11 @@
   /* ═════════════════ hangboard ═════════════════ */
   function hangForm(c, editing, ctx) {
     const P = CT.PROTOCOL;
-    const reps = editing
-      ? { tfd: editing.reps.tfd.slice(), half: editing.reps.half.slice() }
-      : { tfd: [null, null, null], half: [null, null, null] };
+    const reps = {};
+    CT.GRIPS.forEach(g => {
+      reps[g.id] = editing ? S.repsOf(editing, g.id).slice()
+                           : new Array(P.repsPerGrip).fill(null);
+    });
     const shown = { tfd: false, half: false };          // is the +2.5 reveal on screen?
 
     const gripNodes = {};
@@ -240,30 +242,73 @@
        taken back out — otherwise the session would be counted twice. */
     const baseline = S.replay(c, editing ? editing.id : null);
 
-    /* ── one grip channel ── */
+    /* ── one grip channel ──
+       Everything here is a default the athlete can move. The prescribed
+       load opens the field and the clean-session rule keeps steering it,
+       but a session where you went heavier, lighter, or did six hangs on
+       one grip and none on the other is a session that happened, and the
+       log's job is to record it rather than argue. */
     function gripCard(g, idx) {
-      const base = editing ? { weight: editing.weights[g.id], streak: baseline[g.id].streak }
-                           : baseline[g.id];
+      const prescribed = editing && typeof (editing.weights || {})[g.id] === 'number'
+        ? editing.weights[g.id] : baseline[g.id].weight;
+      const base = { weight: prescribed, streak: baseline[g.id].streak };
 
-      const num  = el('span', { class: 'load__n', text: base.weight.toFixed(1) });
+      const num = el('input', { class: 'load__n load__in', type: 'number', step: 0.5,
+        'aria-label': g.name + ' — load for this session',
+        value: base.weight.toFixed(1), oninput: () => setWeight(+num.value) });
       const bump = el('div', { class: 'load__bump' }, [ icon('arrowUp'), el('span', { text: `+${P.increment} kg` }) ]);
-      const lbl  = el('p', { class: 'load__lbl', text: 'Prescribed' });
+      const lbl  = el('p', { class: 'load__lbl' });
+
+      const reset = el('button', { class: 'load__reset', type: 'button',
+        text: 'Back to ' + fmt(prescribed), onclick: () => { num.value = prescribed.toFixed(1); setWeight(prescribed); } });
+
+      function setWeight(v) {
+        base.weight = isFinite(v) ? v : prescribed;
+        refresh();
+      }
 
       const pips = el('div', { class: 'pips' },
         [0, 1].map(i => el('span', { class: 'pip' + (i < base.streak ? ' pip--on' : '') })));
       const streakTxt = el('span', { class: 'grip__streaktxt', text: `${base.streak}/${P.cleanTarget} clean sessions` });
 
-      const pucks = [0, 1, 2].map(i => {
-        const glyph = el('span', { class: 'rep__glyph' }, [ icon('grip') ]);
-        const label = el('span', { class: 'rep__lbl', text: 'Rep ' + (i + 1) });
-        const flash = el('span', { class: 'rep__flash' });
-        const btn = el('button', {
-          class: 'rep',
-          onclick: () => cycle(g.id, i, btn, glyph, label, flash)
-        }, [ flash, glyph, label ]);
-        paint(btn, glyph, label, g, i, reps[g.id][i]);
-        return btn;
-      });
+      /* how many hangs went on this grip — the protocol's three is where
+         it starts, not where it has to stay */
+      const repsHost = el('div', { class: 'reps' });
+      const countTxt = el('span', {});
+      const stepper = el('div', { class: 'stepper stepper--sm' }, [
+        el('button', { type: 'button', 'aria-label': 'One fewer hang on ' + g.name,
+          onclick: () => setCount(reps[g.id].length - 1) }, [ icon('minus') ]),
+        countTxt,
+        el('button', { type: 'button', 'aria-label': 'One more hang on ' + g.name,
+          onclick: () => setCount(reps[g.id].length + 1) }, [ icon('plus') ])
+      ]);
+
+      function setCount(n) {
+        n = Math.max(0, Math.min(P.maxReps, n));
+        const cur = reps[g.id];
+        if (n === cur.length) return;
+        while (cur.length < n) cur.push(null);
+        while (cur.length > n) cur.pop();
+        paintPucks();
+        motion.pop(countTxt, .7);
+        refresh();
+      }
+
+      function paintPucks() {
+        CT.ui.clear(repsHost);
+        countTxt.textContent = String(reps[g.id].length);
+        reps[g.id].forEach((state, i) => {
+          const glyph = el('span', { class: 'rep__glyph' }, [ icon('grip') ]);
+          const label = el('span', { class: 'rep__lbl', text: 'Rep ' + (i + 1) });
+          const flash = el('span', { class: 'rep__flash' });
+          const btn = el('button', { class: 'rep', type: 'button',
+            onclick: () => cycle(g.id, i, btn, glyph, label, flash) }, [ flash, glyph, label ]);
+          paint(btn, glyph, label, g, i, state);
+          repsHost.appendChild(btn);
+        });
+        if (!reps[g.id].length) repsHost.appendChild(el('p', { class: 'reps__none',
+          text: 'Not trained this session — this grip’s load and streak stay where they are.' }));
+      }
 
       const nextTxt = el('span', { class: 'grip__next' });
 
@@ -280,9 +325,14 @@
               el('span', { class: 'load__sign', text: '+' }), num,
               el('span', { class: 'load__u', text: 'KG' })
             ]),
-            lbl, bump
+            lbl, reset, bump
           ]),
-          el('div', { class: 'reps' }, pucks)
+          el('div', { class: 'repsblock' }, [
+            el('div', { class: 'repsblock__hd' }, [
+              el('span', { class: 'eyebrow', text: 'Hangs' }), stepper
+            ]),
+            repsHost
+          ])
         ]),
         el('div', { class: 'grip__foot' }, [
           icon('info'),
@@ -291,9 +341,12 @@
         ])
       ]);
 
-      gripNodes[g.id] = { card, num, bump, lbl, pips, streakTxt, pucks, nextTxt, base };
+      paintPucks();
+      gripNodes[g.id] = { card, num, bump, lbl, reset, pips, streakTxt, nextTxt, base, prescribed };
       return card;
     }
+
+    const fmt = CT.fmtLoad;
 
     /* ── one puck's appearance for a given state ── */
     function paint(btn, glyph, label, g, i, state) {
@@ -323,11 +376,18 @@
     /* ── recompute every dependent surface ── */
     function refresh() {
       if (!gripNodes.tfd) return;              // the date bar can fire before the grips exist
-      let cleanCount = 0, total = 0;
+      let cleanCount = 0, logged = 0, planned = 0, blank = 0;
       CT.GRIPS.forEach(g => {
         const n = gripNodes[g.id];
         const p = S.projectGrip(c, g.id, reps[g.id], n.base);
-        reps[g.id].forEach(r => { if (r !== null) total++; if (r === true) cleanCount++; });
+        planned += reps[g.id].length;
+        reps[g.id].forEach(r => { if (r !== null) logged++; else blank++; if (r === true) cleanCount++; });
+
+        /* the load, and whether it is still the prescribed one */
+        const moved = Math.abs(n.base.weight - n.prescribed) > 0.001;
+        n.lbl.textContent = p.skipped ? 'Not trained' : moved ? 'Your load this session' : 'Prescribed';
+        n.reset.hidden = !moved;
+        n.card.classList.toggle('is-skipped', !!p.skipped);
 
         /* streak pips */
         [...n.pips.children].forEach((pip, i) => {
@@ -339,12 +399,12 @@
         });
         n.streakTxt.textContent = `${p.earned ? P.cleanTarget : p.streak}/${P.cleanTarget} clean sessions`;
 
-        /* the reveal */
+        /* The reveal. The big number is now the athlete's own field and
+           is never animated out from under them, so the earned +2.5 kg
+           lands on the badge and on next session's figure instead. */
         if (p.earned && !shown[g.id]) {
           shown[g.id] = true;
           n.card.classList.add('is-armed');
-          n.lbl.textContent = 'Prescribed next session';
-          motion.count(n.num, p.baseWeight, p.weight, { decimals: 1, duration: .85 });
           if (motion.on) {
             gsap.fromTo(n.bump, { opacity: 0, y: 8, scale: .85 },
               { opacity: 1, y: 0, scale: 1, duration: .55, ease: 'back.out(2.4)', delay: .12 });
@@ -354,31 +414,36 @@
         } else if (!p.earned && shown[g.id]) {
           shown[g.id] = false;
           n.card.classList.remove('is-armed');
-          n.lbl.textContent = 'Prescribed';
-          motion.count(n.num, p.baseWeight + P.increment, p.baseWeight, { decimals: 1, duration: .45 });
           if (motion.on) gsap.to(n.bump, { opacity: 0, y: 6, duration: .25 });
           else n.bump.style.opacity = 0;
           if (p.failed) motion.shake(n.card);
         }
 
-        n.nextTxt.innerHTML = p.done
-          ? (p.earned ? `Next session &nbsp;<b>+${p.weight.toFixed(1)} kg</b>`
-                      : `Next session &nbsp;<b>+${p.weight.toFixed(1)} kg</b> — hold`)
-          : '';
+        n.nextTxt.innerHTML = p.skipped ? 'Next session &nbsp;<b>' + fmt(p.weight) + '</b> — unchanged'
+          : !p.done ? ''
+          : p.earned ? 'Next session &nbsp;<b>' + fmt(p.weight) + '</b>'
+          : 'Next session &nbsp;<b>' + fmt(p.weight) + '</b> — hold';
       });
 
-      const complete = total === 6;
+      /* Complete means every hang you said you'd do has an outcome. How
+         many that is, is yours to decide — but a session with nothing in
+         it at all isn't one. */
+      const complete = planned > 0 && blank === 0;
       ctx.saveBtn.disabled = !complete;
       const earned = CT.GRIPS.filter(g => shown[g.id]);
-      ctx.summary.innerHTML = !complete
-        ? `<b>${total}</b> of 6 hangs logged`
-        : earned.length
-          ? `<b>${cleanCount}/6 clean</b> · +${P.increment} kg on ${earned.map(g => g.short.toLowerCase()).join(' and ')}`
-          : `<b>${cleanCount}/6 clean</b> · load holds next session`;
+      ctx.summary.innerHTML = !planned
+        ? 'Add at least one hang'
+        : blank
+          ? `<b>${logged}</b> of ${planned} hangs logged`
+          : earned.length
+            ? `<b>${cleanCount}/${planned} clean</b> · +${P.increment} kg on ${earned.map(g => g.short.toLowerCase()).join(' and ')}`
+            : `<b>${cleanCount}/${planned} clean</b> · load holds next session`;
     }
 
     const notes = el('textarea', { class: 'input', text: editing ? editing.notes : '',
       placeholder: 'Skin, warm-up, anything worth remembering next time.' });
+
+    const basis = S.workingBasis(c);
 
     const node = el('div', { class: 'stack', style: 'gap:16px' }, [
       el('dl', { class: 'proto' }, [
@@ -386,18 +451,31 @@
         el('div', {}, [ el('dt', { text: 'Hang' }),   el('dd', { text: P.hangSec + ' s' }) ]),
         el('div', {}, [ el('dt', { text: 'Reserve' }),el('dd', { text: P.reserveSec + ' s' }) ]),
         el('div', {}, [ el('dt', { text: 'Rest' }),   el('dd', { text: P.restSec / 60 + ' min' }) ]),
-        el('div', {}, [ el('dt', { text: 'Reps' }),   el('dd', { text: '3 per grip' }) ])
+        el('div', {}, [ el('dt', { text: 'Working' }),
+          el('dd', { text: basis ? Math.round(basis.pct * 100) + '% of max' : 'Prescribed' }) ])
       ]),
       ...CT.GRIPS.map(gripCard),
+      el('div', { class: 'grip__foot', style: 'border-top:0;border-radius:var(--r-md)' }, [
+        icon('info'),
+        el('span', { text: basis
+          ? `Loads open at ${Math.round(basis.pct * 100)}% of the total on your fingers at a max hang, and move ` +
+            `with the clean-session rule from there. Change either number if the day says otherwise — what you ` +
+            `log is what the next session is worked out from.`
+          : 'Loads and hang counts open at what’s prescribed. Change either if the day says otherwise — ' +
+            'what you log is what the next session is worked out from.' })
+      ]),
       el('div', { class: 'field' }, [ el('label', { text: 'Notes' }), notes ])
     ]);
 
     return {
       node, refresh,
       title: 'Max hangs',
-      sub: `Six hangs · ${P.hangSec} seconds · pass means ${P.reserveSec} seconds still in reserve`,
+      sub: `${P.hangSec}-second hangs · pass means ${P.reserveSec} seconds still in reserve`,
       payload() {
-        const weights = {}; CT.GRIPS.forEach(g => weights[g.id] = gripNodes[g.id].base.weight);
+        /* Only a grip that was actually trained carries a load — a
+           weight against no hangs is a number nothing happened at. */
+        const weights = {};
+        CT.GRIPS.forEach(g => { if (reps[g.id].length) weights[g.id] = gripNodes[g.id].base.weight; });
         return { weights, reps: { tfd: reps.tfd.slice(), half: reps.half.slice() }, notes: notes.value.trim() };
       },
       savedSub() {

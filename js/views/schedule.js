@@ -102,8 +102,8 @@
           const tries = ps.reduce((a, p) => a + p.attempts, 0);
           return [CT.topGrade(ps), tries + ' tries'].filter(Boolean).join(' · ');
         }
-        const total = CT.GRIPS.reduce((a, g) => a + ses.reps[g.id].filter(Boolean).length, 0);
-        return total + '/6 clean';
+        const planned = S.repCount(ses);
+        return planned ? S.cleanCount(ses) + '/' + planned + ' clean' : 'Max hangs';
       }
       /* a day cell is narrow, so the style beats the modality's name
          wherever one was recorded — "Hangboard" says more than

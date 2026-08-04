@@ -155,7 +155,7 @@
       let detail = T.detail;
       if (status === 'completed' && ses) detail = CT.describe(c, ses);
       else if (status === 'missed') detail = 'Not logged';
-      else if (slot.type === 'strength') detail = `+${c.prescribed.tfd} kg drag · +${c.prescribed.half} kg half-crimp`;
+      else if (slot.type === 'strength') detail = `${CT.fmtLoad(c.prescribed.tfd)} drag · ${CT.fmtLoad(c.prescribed.half)} half-crimp`;
 
       return el('div', { class: 'plan__row' + (status === 'completed' ? ' plan__row--done'
                                             : status === 'missed' ? ' plan__row--missed' : '') }, [
@@ -253,11 +253,15 @@
         return ['Limit bouldering', CT.topGrade(ps), `${tries} ${tries === 1 ? 'attempt' : 'attempts'}`,
                 sent ? `${sent} sent` : null].filter(Boolean).join(' · ');
       }
+      /* A grip with no hangs against it wasn't trained, so it is left
+         out rather than reported as zero of zero. */
       const parts = CT.GRIPS.map(g => {
-        const r = ses.reps[g.id];
-        return `${g.short} +${ses.weights[g.id]} kg ${r.filter(Boolean).length}/${r.length}`;
-      });
-      return parts.join(' · ');
+        const r = S.repsOf(ses, g.id);
+        if (!r.length) return null;
+        const w = (ses.weights || {})[g.id];
+        return `${g.short} ${w == null ? '' : CT.fmtLoad(w) + ' '}${r.filter(Boolean).length}/${r.length}`;
+      }).filter(Boolean);
+      return parts.length ? parts.join(' · ') : 'Max hangs';
     }
     const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
     const form = CT.FORMS[ses.modality] || [];

@@ -92,6 +92,13 @@
       targets: d.targets,
       template: d.template,
       startLoads: d.startLoads,
+      /* What the opening loads were worked out from. Absent on athletes
+         onboarded before the working percentage existed — their loads
+         were typed in directly, and the screens say so rather than
+         inventing a max nobody tested. */
+      maxLoads: d.maxLoads || null,
+      refBodyweight: d.refBodyweight || null,
+      workingPct: d.workingPct || null,
       /* replayed below — never read from the database, so it can never
          disagree with the sessions it is derived from */
       prescribed: Object.assign({}, d.startLoads),
@@ -457,6 +464,13 @@
     push(F().deleteDoc(ref(c.id, 'bodyweight', iso)), 'that deletion');
   };
 
+  /* One max-hang test per day, so the date is the document id — the
+     same reasoning as a bodyweight reading. */
+  repo.saveMaxHang = function (c, entry) {
+    if (!repo.enabled) return;
+    push(F().setDoc(ref(c.id, 'maxHang', entry.date), clean(entry)), 'that test');
+  };
+
   /* A critical-force test carries its raw per-rep traces, which is
      the bulk of it — around 40 KB for two hands, against a 1 MiB
      document limit. Kept whole rather than split, because the trace
@@ -479,7 +493,8 @@
      them here anyway. */
   repo.saveAthlete = function (c, patch) {
     if (!repo.enabled) return;
-    const allowed = ['name', 'full', 'initials', 'block', 'targets', 'template', 'startLoads', 'coachNote'];
+    const allowed = ['name', 'full', 'initials', 'block', 'targets', 'template', 'startLoads',
+                     'maxLoads', 'refBodyweight', 'workingPct', 'coachNote'];
     const body = {};
     Object.keys(patch || c).forEach(k => { if (allowed.includes(k)) body[k] = (patch || c)[k]; });
     if (!Object.keys(body).length) return;
@@ -514,7 +529,9 @@
       inviteExpires: null,
       name: client.name, full: client.full, initials: client.initials,
       block: client.block, targets: client.targets, template: client.template,
-      startLoads: client.startLoads, coachNote: client.coachNote || '',
+      startLoads: client.startLoads,
+      maxLoads: client.maxLoads, refBodyweight: client.refBodyweight, workingPct: client.workingPct,
+      coachNote: client.coachNote || '',
       createdAt: serverTimestamp()
     }));
 

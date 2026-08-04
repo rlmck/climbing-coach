@@ -13,7 +13,8 @@
     enabled: false,
     newId: () => 'loc_' + Math.random().toString(36).slice(2, 10),
     saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
-    saveBodyweight() {}, deleteBodyweight() {}, saveAthlete() {},
+    saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, saveAthlete() {},
+    saveCFTest() {}, deleteCFTest() {},
     createAthlete: async c => c.id
   };
 
@@ -103,6 +104,21 @@
     },
     /* sessions logged before limit bouldering existed are all hangboard */
     strengthMode(ses) { return ses.mode || 'hangs'; },
+
+    /* What was actually hung on a grip. Six hangs, three a side, used to
+       be the only shape a session could have — now the athlete sets the
+       count per grip and may leave one out entirely, so every reader has
+       to cope with an absent grip rather than assume three of them. */
+    repsOf(ses, gripId) {
+      const r = ses && ses.reps && ses.reps[gripId];
+      return Array.isArray(r) ? r : [];
+    },
+    repCount(ses) {
+      return CT.GRIPS.reduce((a, g) => a + S.repsOf(ses, g.id).length, 0);
+    },
+    cleanCount(ses) {
+      return CT.GRIPS.reduce((a, g) => a + S.repsOf(ses, g.id).filter(r => r === true).length, 0);
+    },
     /* only the hangboard carries a prescribed load, so only it replays */
     hangSessions(c) {
       return S.strengthSessions(c).filter(s => S.strengthMode(s) === 'hangs');
@@ -153,8 +169,17 @@
       CT.GRIPS.forEach(g => {
         let weight = (c.startLoads || c.prescribed)[g.id], streak = 0;
         list.forEach(ses => {
-          weight = ses.weights[g.id];
-          streak = ses.reps[g.id].every(Boolean) ? streak + 1 : 0;
+          const reps = S.repsOf(ses, g.id);
+          /* A session that skipped this grip says nothing about it —
+             not a clean streak, not a reset, and not a load. Reading a
+             weight off it would drag the prescription sideways for work
+             that never happened. */
+          if (!reps.length) return;
+          /* The load that was actually hung, which is not always the one
+             that was prescribed — an athlete who went heavier or lighter
+             carries on from where they really are. */
+          if (typeof (ses.weights || {})[g.id] === 'number') weight = ses.weights[g.id];
+          streak = reps.every(Boolean) ? streak + 1 : 0;
           if (streak >= CT.PROTOCOL.cleanTarget) { streak = 0; weight += CT.PROTOCOL.increment; }
         });
         out[g.id] = { weight, streak };
@@ -175,16 +200,38 @@
        started at, rather than from the athlete's state today */
     projectGrip(c, gripId, reps, baseOverride) {
       const base = baseOverride || S.gripState(c, gripId);
+      /* No hangs on this grip is not a clean sweep of nothing — it is a
+         grip that wasn't trained, and it moves neither the streak nor
+         the load. `[].every()` is true, so this has to be said out loud
+         or a skipped grip would earn its +2.5 kg for free. */
+      if (!reps.length) {
+        return { done: true, clean: false, failed: false, skipped: true,
+                 streak: base.streak, weight: base.weight, earned: false,
+                 wasStreak: base.streak, baseWeight: base.weight };
+      }
       const done = reps.every(r => r !== null);
       const clean = done && reps.every(r => r === true);
       const failed = reps.some(r => r === false);
-      let streak = base.streak, weight = base.weight, earned = false;
+      let streak = base.streak, weight = base.weight, earned = false, skipped = false;
       if (failed) streak = 0;
       else if (clean) {
         streak = base.streak + 1;
         if (streak >= CT.PROTOCOL.cleanTarget) { streak = 0; weight = base.weight + CT.PROTOCOL.increment; earned = true; }
       }
-      return { done, clean, failed, streak, weight, earned, wasStreak: base.streak, baseWeight: base.weight };
+      return { done, clean, failed, skipped, streak, weight, earned,
+               wasStreak: base.streak, baseWeight: base.weight };
+    },
+
+    /* The working load the block opened on, and what it was derived
+       from — 80% of the total on the fingers at a recorded max. Absent
+       for athletes onboarded before the percentage existed, whose
+       starting loads were simply typed in. */
+    workingBasis(c) {
+      if (!c.maxLoads || !c.refBodyweight) return null;
+      const pct = c.workingPct || CT.PROTOCOL.workingPct;
+      return { pct, bodyweight: c.refBodyweight, max: c.maxLoads,
+               loads: { tfd: CT.workingLoad(c.refBodyweight, c.maxLoads.tfd, pct),
+                        half: CT.workingLoad(c.refBodyweight, c.maxLoads.half, pct) } };
     },
 
     /* ── rest-rule guidance (advisory only, never blocking) ── */

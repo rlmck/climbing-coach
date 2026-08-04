@@ -41,6 +41,30 @@ holds the load — both outcomes visible side by side.
 
 Each rep cycles **clean → failed → cleared** on tap.
 
+**Nothing in it is fixed.** The load is a field, not a readout: it opens
+at what's prescribed and you can move it, with the calculated figure one
+tap away if you change your mind. The hang count is a stepper per grip,
+so six on the drag and none on the half-crimp is a session the log will
+take — a grip with no hangs against it wasn't trained, and it moves
+neither that grip's load nor its clean streak. What you log is what the
+next session is worked out from, so going heavier or lighter carries
+forward rather than being argued with.
+
+**Working loads are a share of the max, not the max.** Onboarding asks
+what the athlete can hold once — added load, 20 mm, seven seconds — and
+prescribes 80% of the *total* through the fingers. 70 kg bodyweight
+hanging +30 kg is 100 kg on the edge; 80% of that is 80 kg, which is
++10 kg on the harness. Bodyweight is in the sum because it is on the
+edge whether or not anyone writes it down — taking 80% of the added
+weight alone would prescribe something far nearer maximal than it looks.
+Both the percentage and the resulting load are editable, and the form
+shows the arithmetic under each one. Below bodyweight is a real answer
+and prints as a minus: it means take some off with a pulley.
+
+From there the clean-session rule owns the load. The max is kept on the
+record so the screens can say what the number came from, and lands on
+the max-hang chart as the first test.
+
 **Limit bouldering** — the other half of a strength session. The strength
 log opens on a mode picker: **Hangboard** or **Limit Bouldering**. The
 limit form is one row per problem — grade, attempts, worked or sent — with
@@ -80,7 +104,8 @@ against it is deleted from its own log screen, which puts the loads back.
 3; finishing week 8 lands 4, which is a milestone.
 
 **Onboarding** — as Ross, "Onboard a client" on the Clients screen. Name,
-block dates and length, starting hang loads, and the days they train.
+bodyweight, block dates and length, max hang per grip, the share of it
+they'll train at, and the days they train.
 The days you pick *are* the weekly target — one suggested slot per
 prescribed session — so the plan and the target can't drift apart. The
 new athlete appears in the roster and the user switcher immediately, with

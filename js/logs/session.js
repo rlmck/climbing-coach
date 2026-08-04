@@ -322,7 +322,7 @@
         cell('Status', missed ? 'Missed' : 'Suggested')
       ]),
       el('p', { class: 'sub', text: slot.type === 'strength'
-        ? `Prescribed +${c.prescribed.tfd} kg drag · +${c.prescribed.half} kg half-crimp`
+        ? `Prescribed ${CT.fmtLoad(c.prescribed.tfd)} drag · ${CT.fmtLoad(c.prescribed.half)} half-crimp`
         : T.detail }),
       planned <= asks
         ? el('div', { class: 'nudge' }, [ icon('info'), el('p', {

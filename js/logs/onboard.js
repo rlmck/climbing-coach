@@ -23,10 +23,20 @@
       bodyweight: '',
       start: CT.nextMonday(),
       weeks: 8,
-      loads: { tfd: 10, half: 12.5 },
+      /* What they can hold once, per grip — added load at bodyweight. */
+      max: { tfd: 20, half: 25 },
+      pct: Math.round(CT.PROTOCOL.workingPct * 100),
+      /* The load the block actually opens on. Null means "whatever the
+         percentage works out to"; a number means somebody disagreed with
+         it, which is allowed and is why the field is a field. */
+      loads: { tfd: null, half: null },
       template: { strength: [0], endurance: [1, 3, 5], pe: [2] },
       note: ''
     };
+
+    /* the working load for a grip, derived unless it's been overridden */
+    const derived = id => CT.workingLoad(parseFloat(form.bodyweight), form.max[id], form.pct / 100);
+    const loadOf  = id => form.loads[id] != null ? form.loads[id] : derived(id);
 
     const summary = el('p', { class: 'sub' });
     const saveBtn = el('button', { class: 'btn btn--primary', onclick: create },
@@ -84,15 +94,59 @@
     const nameInput = el('input', { class: 'input', type: 'text', placeholder: 'Full name',
       value: form.name, oninput: e => { form.name = e.target.value; sync(); } });
     const bwInput = el('input', { class: 'input', type: 'number', step: 0.1, min: 20, max: 200,
-      placeholder: 'Optional', oninput: e => { form.bodyweight = e.target.value; } });
+      placeholder: '00.0', oninput: e => { form.bodyweight = e.target.value; sync(); } });
     const startInput = el('input', { class: 'input', type: 'date', value: form.start,
       oninput: e => { form.start = e.target.value || CT.nextMonday(); sync(); } });
     const weeksInput = el('select', { class: 'input', onchange: e => { form.weeks = +e.target.value; sync(); } },
       [4, 6, 8, 10, 12].map(w => el('option', { value: w, text: w + ' weeks', selected: w === form.weeks || null })));
-    const tfdInput = el('input', { class: 'input', type: 'number', step: 0.5, value: form.loads.tfd,
-      oninput: e => { form.loads.tfd = +e.target.value; sync(); } });
-    const halfInput = el('input', { class: 'input', type: 'number', step: 0.5, value: form.loads.half,
-      oninput: e => { form.loads.half = +e.target.value; sync(); } });
+    const maxRows = CT.GRIPS.map(g => field(g.name, el('div', { class: 'row', style: 'gap:9px' }, [
+      el('input', { class: 'input', type: 'number', step: 0.5, value: form.max[g.id],
+        'aria-label': g.name + ' — max hang',
+        oninput: e => { form.max[g.id] = +e.target.value; sync(); } }),
+      el('span', { class: 'readout__u', style: 'flex:none', text: 'kg added' })
+    ])));
+
+    const pctInput = el('input', { class: 'input', type: 'number', step: 1, min: 40, max: 100, value: form.pct,
+      oninput: e => { form.pct = Math.max(40, Math.min(100, +e.target.value || 0)); sync(); } });
+
+    /* ── the working load, and the sum behind it ──
+       Shown as a field rather than a readout because the arithmetic is
+       a starting point, not a verdict: a coach who knows this athlete
+       hangs better than the number says can simply say so. */
+    function loadRow(g) {
+      const input = el('input', { class: 'input', type: 'number', step: 0.5,
+        'aria-label': g.name + ' — working load',
+        oninput: e => { form.loads[g.id] = e.target.value === '' ? null : +e.target.value; sync(); } });
+      const sum = el('p', { class: 'tiny' });
+      const reset = el('button', { type: 'button', class: 'load__reset', text: 'Use the calculated load',
+        onclick: () => { form.loads[g.id] = null; sync(); } });
+
+      const row = el('div', { class: 'field' }, [
+        el('label', { text: g.name }),
+        el('div', { class: 'row', style: 'gap:9px' }, [
+          input, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg added' })
+        ]),
+        sum, reset
+      ]);
+
+      row._sync = () => {
+        const d = derived(g.id), v = loadOf(g.id);
+        const overridden = form.loads[g.id] != null;
+        if (!overridden) input.value = d == null ? '' : d.toFixed(1);
+        reset.hidden = !overridden || d == null;
+        const bw = parseFloat(form.bodyweight);
+        sum.textContent = d == null
+          ? 'Enter a bodyweight above and this works itself out.'
+          : overridden
+            ? `Calculated load is ${sign(d)} kg — you’ve set ${sign(v)} kg instead.`
+            : `(${bw.toFixed(1)} + ${form.max[g.id].toFixed(1)}) × ${form.pct}% − ${bw.toFixed(1)} ` +
+              `= ${(bw + v).toFixed(1)} kg through the fingers.`;
+      };
+      return row;
+    }
+
+    const sign = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
+    const loadRows = CT.GRIPS.map(loadRow);
     const noteInput = el('textarea', { class: 'input', placeholder: 'Anything they should read on day one.',
       oninput: e => form.note = e.target.value });
 
@@ -103,15 +157,25 @@
         r._count.style.color = n === 0 && r._key !== 'pe' ? 'var(--clay)' : '';
       });
 
+      loadRows.forEach(r => r._sync());
+
       const t = form.template;
       const peFrom = form.weeks - 2;
       phaseNote.textContent = `Base phase for weeks 1 to ${peFrom - 1}. Power Endurance opens in week ${peFrom} and runs to the end.`;
 
-      const valid = form.name.trim().length > 1 && t.strength.length > 0 && t.endurance.length > 0;
+      /* Bodyweight used to be optional. It isn't any more: the working
+         load is a share of bodyweight plus added weight, and without the
+         first half of that there is nothing to take a share of. */
+      const bwOK = isFinite(parseFloat(form.bodyweight)) &&
+                   parseFloat(form.bodyweight) >= 20 && parseFloat(form.bodyweight) <= 200;
+      const loadsOK = CT.GRIPS.every(g => typeof loadOf(g.id) === 'number' && isFinite(loadOf(g.id)));
+      const valid = form.name.trim().length > 1 && t.strength.length > 0 && t.endurance.length > 0 && bwOK && loadsOK;
       saveBtn.disabled = !valid;
 
       const base = t.strength.length + t.endurance.length;
       summary.textContent = !form.name.trim() ? (self ? 'Your name, to finish' : 'Give them a name to finish')
+        : !bwOK ? (self ? 'Your bodyweight, so the loads can be worked out' : 'A bodyweight, so the loads can be worked out')
+        : !loadsOK ? 'Set a working load for each grip'
         : !t.strength.length ? 'Pick at least one strength day'
         : !t.endurance.length ? 'Pick at least one endurance day'
         : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
@@ -120,10 +184,12 @@
     async function create() {
       const c = CT.createClient({
         name: form.name,
-        bodyweight: form.bodyweight ? +parseFloat(form.bodyweight).toFixed(1) : null,
+        bodyweight: +parseFloat(form.bodyweight).toFixed(1),
         start: form.start,
         weeks: form.weeks,
-        loads: form.loads,
+        loads: { tfd: loadOf('tfd'), half: loadOf('half') },
+        maxLoads: { tfd: form.max.tfd, half: form.max.half },
+        workingPct: form.pct / 100,
         template: {
           strength: form.template.strength.slice(),
           endurance: form.template.endurance.slice(),
@@ -156,6 +222,7 @@
           return;
         }
         if (c.bodyweight && c.bodyweight.length) CT.repo.saveBodyweight(c, c.bodyweight[0]);
+        if (c.maxHang && c.maxHang.length) CT.repo.saveMaxHang(c, c.maxHang[0]);
       }
 
       S.addClient(c);
@@ -193,7 +260,8 @@
             field('Name', nameInput),
             field('Starting bodyweight', el('div', { class: 'row', style: 'gap:9px' }, [
               bwInput, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg' })
-            ]), self ? 'You can update this any time.' : 'They can update this any time.')
+            ]), self ? 'The working loads are worked out from this. You can update it any time.'
+                     : 'The working loads are worked out from this. They can update it any time.')
           ])
         ]),
         section('Block', [
@@ -203,16 +271,24 @@
           ]),
           phaseNote
         ]),
-        section('Starting hang loads', [
+        section('Max hang', [
+          el('p', { class: 'tiny', style: 'margin-top:-4px',
+            text: self ? 'What you can hold once, added to bodyweight, on a 20 mm edge for seven seconds.'
+                       : 'What they can hold once, added to bodyweight, on a 20 mm edge for seven seconds.' }),
+          el('div', { class: 'formgrid' }, maxRows)
+        ]),
+        section('Working load', [
+          el('p', { class: 'tiny', style: 'margin-top:-4px', text:
+            'Training sits under the max, at a share of the total load on the fingers — bodyweight included, ' +
+            'because it is on the edge whether or not anyone writes it down. Both numbers are editable.' }),
           el('div', { class: 'formgrid' }, [
-            field('Three-finger drag', el('div', { class: 'row', style: 'gap:9px' }, [
-              tfdInput, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg added' })
+            field('Share of max', el('div', { class: 'row', style: 'gap:9px' }, [
+              pctInput, el('span', { class: 'readout__u', style: 'flex:none', text: '% of total' })
             ])),
-            field('Half-crimp', el('div', { class: 'row', style: 'gap:9px' }, [
-              halfInput, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg added' })
-            ]))
+            null
           ]),
-          el('p', { class: 'tiny', text: 'Set these a little under a clean max hang. Two clean sessions in a row earns +2.5 kg from there.' })
+          el('div', { class: 'formgrid' }, loadRows),
+          el('p', { class: 'tiny', text: 'Two clean sessions in a row earns +2.5 kg from wherever this starts.' })
         ]),
         section('Training days', [
           el('p', { class: 'tiny', style: 'margin-top:-4px',
