@@ -50,6 +50,9 @@
       <div class="switcher" id="switcher" role="group" aria-label="Switch user"></div>
       <!-- only true in mock mode; app.js hides it against a real backend -->
       <p class="rail__note" id="mockNote" hidden>Prototype — mock data, nothing is saved.</p>
+      <!-- which build this device is actually running, straight from the
+           service worker that is serving it -->
+      <p class="rail__note" id="buildNote" hidden></p>
     </div>
   </aside>
 
@@ -99,7 +102,38 @@
 <script>
   /* Service workers need a real origin — skip it when opened from file:// */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    /* Whether this page was already under a worker when it loaded, read
+       now because registering is about to change the answer. It decides
+       whether a later handover is a first install or a new build. */
+    const hadController = !!navigator.serviceWorker.controller;
+
+    addEventListener('load', () => {
+      /* `updateViaCache: 'none'` so the browser never answers the update
+         check out of its own HTTP cache. sw.js is the one request that
+         must always reach the server, because it is what decides whether
+         everything else is stale. */
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+        const check = () => reg.update().catch(() => {});
+        check();
+        /* An installed app is rarely reloaded and usually just resumed,
+           so coming back to the foreground is the moment worth asking.
+           It costs one conditional request for a 3 KB file. */
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      }).catch(() => {});
+
+      /* A new worker has taken over, so this page is running code the
+         worker no longer serves. Reload onto the new build — unless a
+         sheet is open, because someone part-way through logging a
+         session should not have it taken off them for an update they
+         didn't ask for. That one lands on the next launch. */
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloading) return;         // first install: nothing to replace
+        if (document.querySelector('#sheetHost .sheet')) return;
+        reloading = true;
+        location.reload();
+      });
+    });
   }
 </script>
 </body>

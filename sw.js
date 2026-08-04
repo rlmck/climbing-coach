@@ -10,7 +10,16 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v9';
+const CACHE = 'coach-v10';
+
+/* Which build is actually running, asked for by the app and shown in the
+   sidebar. "Is my phone up to date" is otherwise unanswerable from the
+   phone, which is the only place it ever gets asked. */
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'version' && e.ports[0]) {
+    e.ports[0].postMessage({ version: CACHE });
+  }
+});
 
 const SHELL = [
   './',

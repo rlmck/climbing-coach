@@ -92,6 +92,13 @@
        real backend the opposite is true: everything here is saved. */
     CT.ui.$('#mockNote').hidden = CT.CONFIG.live;
 
+    /* Which build is on this device. Reported by the worker that served
+       it rather than by the page, because the page is exactly what would
+       be lying if something were stale. */
+    const bn = CT.ui.$('#buildNote');
+    bn.hidden = !CT.build;
+    if (CT.build) bn.textContent = CT.build;
+
     /* Signed out is a state worth being able to reach; and when a write
        hasn't landed yet, say so rather than leaving it to be discovered. */
     const foot = CT.ui.$('.rail__foot');
@@ -483,9 +490,28 @@
   /* The sign-in screen calls this once a code has been redeemed. */
   CT.reenter = () => onUser(CT.fb.auth.currentUser);
 
+  /* Ask the worker serving this page what it is. No answer — no worker
+     yet, or a browser that has never installed one — is not a failure
+     and simply shows nothing. */
+  function readBuild() {
+    const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!sw) return;
+    let done = false;
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => {
+      if (done) return;
+      done = true;
+      CT.build = (e.data && e.data.version) || null;
+      if (CT.ui.$('#buildNote')) renderRail();
+    };
+    setTimeout(() => { done = true; }, 2000);
+    try { sw.postMessage({ type: 'version' }, [ch.port2]); } catch (e) { /* no worker to ask */ }
+  }
+
   /* ── boot ───────────────────────────────────────────────── */
   async function boot() {
     lockGestures();
+    readBuild();
     const main = CT.ui.$('#main'), bar = CT.ui.$('#topbar');
     main.addEventListener('scroll', () => bar.classList.toggle('is-stuck', main.scrollTop > 4), { passive: true });
     CT.ui.$('#railScrim').addEventListener('click', () => toggleRail(false));

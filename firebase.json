@@ -22,21 +22,41 @@
       "criticalforce/**"
     ],
     "_comment": [
-      "Order matters and it is not the obvious way round: where two",
-      "rules match one file, the LAST one wins. So the broad globs go",
-      "first and the specific files go last, or sw.js quietly inherits",
-      "the hour-long cache from **/*.js — which is exactly the header",
-      "it exists to opt out of. A service worker cached for an hour",
-      "can pin someone to an old build of the app."
+      "Order matters and it is not the obvious way round: where two rules",
+      "match one file, the LAST one wins. So the broad globs go first and",
+      "the specific ones go last.",
+      "",
+      "Default is no-cache for everything, which does not mean 'do not",
+      "store' — it means 'ask before using'. Repeat visits get a 304 and",
+      "a few hundred bytes, and a deploy reaches a phone on the next",
+      "launch rather than whenever an expiry happens to lapse.",
+      "",
+      "That default is the whole point. The service worker is",
+      "network-first so a redeploy shows up immediately, but its fetch()",
+      "goes through the browser's HTTP cache like anyone else's — so a",
+      "max-age on the app's own files silently overrides the strategy,",
+      "and the worker faithfully serves back whatever the cache handed",
+      "it. app.css was on a week; the shell at / was on an hour.",
+      "",
+      "Long caches are for files whose contents genuinely never change:",
+      "pinned library builds, and icons."
     ],
     "headers": [
       {
-        "source": "**/*.@(js|css)",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+        "source": "**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
-        "source": "/assets/**",
+        "source": "/vendor/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "/assets/**/*.@(png|jpg|jpeg|gif|svg|webp|ico)",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+      },
+      {
+        "source": "/",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       },
       {
         "source": "/index.html",
