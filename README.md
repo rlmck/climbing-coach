@@ -26,8 +26,9 @@ Bottom-left of the sidebar. Three mock people, no auth:
 | **Jade** | Client | Week 2 of 8, base phase — no power-endurance sessions scheduled yet |
 
 Against a real backend the switcher is a coach's tool only. An athlete is
-only ever themselves; a coach switches between their roster and, if they
-train, their own block.
+only ever themselves. A coach gets one row for themselves and one per
+athlete — their own training is what the coach view *is*, not a second
+account sitting alongside it.
 
 ## What to poke at
 
@@ -90,10 +91,47 @@ it also mints their six-digit code, which the sheet then shows you.
 screen runs the same onboarding form with you as the athlete: your days,
 your dates, your starting loads, devised by you rather than prescribed to
 you. It's an ordinary athlete record that happens to be claimed by the
-account that made it, so there's no code and nothing to hand over. It
-stays out of the client roster, and the switcher labels it **You**.
-Logging is disabled while you're viewing someone as their coach, so
-switch to yourself to log.
+account that made it, so there's no code and nothing to hand over.
+
+It is not a second user. Your Dashboard, Plan and Progress screens *are*
+that record — you log against them, you upload your own critical-force
+tests there, and the switcher has one row for you, not two. Only when
+you open somebody you coach does the coach-view bar appear and logging
+shut off; the topbar carries a **You / …** control to get back.
+
+A block you set up for yourself through the ordinary "Onboard a client"
+form is an athlete nobody has claimed, so it sits in the roster waiting
+for a code. **"This is me"** on that row folds it into your own view.
+Nothing about the training moves — you were already its only member —
+and the outstanding code is withdrawn, because there's nobody to give
+it to.
+
+**Endurance and power-endurance logs** — a modality picker, then a form
+built from `CT.FORMS`. What the forms ask for:
+
+*What you climbed.* A session is "2 × 6a, then 3 × 6a+, then 4 × 5c",
+not the hardest thing in it. Routes, route 4×4s, boulder 4×4s and long
+problems all take as many grade/count rows as the session actually had,
+in the order they were climbed, with a running total and the hardest
+grade underneath. Traversing and 1-on-1-off take a single grade behind
+a toggle — off by default, because most traverses have no grade anybody
+would defend, and off is stored as nothing rather than as a guess.
+
+*Hangboard or edge pulls.* One modality, two exercises: both hands on
+a board splits the load, one hand does not, and comparing them is
+meaningless. Logged apart, and the style is what the history rows and
+day cells show. Both, and the 7:3 repeaters, also ask which grip —
+half-crimp or three-finger drag, the same pair the strength protocol
+runs on.
+
+*Minutes and seconds.* Every duration is two boxes and is stored as
+whole seconds. A 3:30 set used to be either 3 or 4.
+
+*Effort on five points, each with a sentence.* 1 can sustain all day ·
+2 light pump but sustainable · 3 feeling worked · 4 had to try hard ·
+5 maximal all-out effort. The sentences are one tap away under "what
+the numbers mean", with the picked one highlighted. Ten points asked
+people to tell 6 from 7, which nobody does twice the same way.
 
 **Bodyweight** — clients log a reading whenever they weigh in, from the
 dashboard tile or the Progress screen. One reading per day; logging the
@@ -260,10 +298,23 @@ the snapshot listener then rebuilds `CT.world` from what is actually
 stored. Ids are minted client-side so the optimistic copy and the
 document that lands are one record, never two.
 
+**Reading what's already stored.** The field schemas have moved on:
+minutes became seconds, a single grade became a list of them, and
+effort went from ten points to five. Old documents aren't rewritten —
+what someone recorded is what they recorded — so `CT.migrateSession`
+translates them once, in `repo.js`, where the world is assembled.
+Everything downstream only ever sees the current shape, and anything
+saved after an edit lands in it for good.
+
+Effort is the awkward one: a stored 4 means "had to try hard" on the
+new scale and something nearer the opposite on the old, and the number
+alone doesn't say which. So every session saved from here on carries
+`rpeScale: 5`, and a session that doesn't carry it is one from before
+the change and gets halved.
+
 ## Deliberately placeholder
 
-Endurance and power-endurance sub-forms (field sets are a first guess),
-the exact chart types, and the streak rules.
+The exact chart types and the streak rules.
 
 Critical force used to be on this list. It isn't any more: the shape is
 the device's real export, and the mock world is generated as device files
@@ -284,7 +335,9 @@ js/cftest.js           the critical-force device's export, normalised.
                        Loads before data.js — the mock world is built
                        through it too
 js/repo.js             Firestore in, CT.world out
-js/data.js             the mock world, generated relative to today's date
+js/data.js             taxonomy, field schemas, the legacy-shape
+                       migration, and the mock world, generated
+                       relative to today's date
 js/store.js            derived state, the progression rule, rest-day rules
 js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
 js/charts.js           hand-rolled SVG charts
@@ -294,7 +347,8 @@ js/views/              signin (the code pad, and the coach's way in) ·
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,
-                       plan-ahead picker) · onboard ·
+                       plan-ahead picker, and the field controls every
+                       form is built from) · onboard ·
                        cfupload (device files in, confirmed by the coach)
 js/app.js              shell, routing, user switching
 ```

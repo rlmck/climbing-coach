@@ -88,9 +88,9 @@
 
   CT.MODALITIES = {
     endurance: [
-      { id:'routes',     name:'Routes',       desc:'Continuous laps on route terrain' },
+      { id:'routes',     name:'Routes',       desc:'Laps on route terrain, at whatever grades you climbed' },
       { id:'traverse',   name:'Traversing',   desc:'Low-level, sustained, no rest' },
-      { id:'edgepulls',  name:'Edge Pulls',   desc:'Sub-maximal loaded pulls' },
+      { id:'edgepulls',  name:'Hangboard / Edge Pulls', desc:'Sub-maximal loaded pulls — board or single hand' },
       { id:'oneonoff',   name:'1-on-1-off',   desc:'1 minute climbing, 1 minute rest' },
       { id:'route4x4',   name:'Route 4×4s',   desc:'4 routes × 4 sets' }
     ],
@@ -102,18 +102,200 @@
     ]
   };
 
-  /* field schemas — deliberately first-pass, easy to swap out later */
-  CT.FORMS = {
-    routes:      [ ['grade','Top grade','select','6a,6a+,6b,6b+,6c,6c+,7a,7a+,7b'], ['laps','Laps','number',12], ['duration','Duration','minutes',75], ['rpe','Effort','rpe',6] ],
-    traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','seconds',180], ['restSec','Rest','seconds',180], ['rpe','Effort','rpe',6] ],
-    edgepulls:   [ ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workMin','Time per set','minutes',3], ['rpe','Effort','rpe',5] ],
-    oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','select','5+,6a,6a+,6b,6b+,6c,6c+,7a'], ['rpe','Effort','rpe',6] ],
-    route4x4:    [ ['grade','Route grade','select','6a,6a+,6b,6b+,6c,6c+,7a'], ['sets','Sets','number',4], ['restMin','Rest between sets','minutes',4], ['rpe','Effort','rpe',7] ],
+  /* ── grade ladders ────────────────────────────────────────
+     Ordered hardest-last, because "hardest thing climbed" is an index
+     comparison everywhere it's asked for. */
+  CT.GRADES = {
+    route:   ['4','4+','5a','5b','5c','6a','6a+','6b','6b+','6c','6c+','7a','7a+','7b','7b+','7c','7c+','8a'],
+    boulder: ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12']
+  };
+  CT.GRADE_DEFAULT = { route:'6a', boulder:'V4' };
 
-    boulder4x4:  [ ['grade','Problem grade','select','V2,V3,V4,V5,V6,V7'], ['sets','Sets','number',4], ['restMin','Rest between sets','minutes',4], ['rpe','Effort','rpe',8] ],
-    wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','seconds',240], ['restMin','Rest','minutes',5], ['rpe','Effort','rpe',8] ],
-    longboulder: [ ['problems','Problems','number',5], ['moves','Moves each','number',20], ['grade','Grade','select','V2,V3,V4,V5,V6'], ['rpe','Effort','rpe',8] ],
-    repeaters:   [ ['edge','Edge','select','25 mm,20 mm,18 mm'], ['load','Load','kg',8], ['sets','Sets','number',6], ['rpe','Effort','rpe',7] ]
+  /* ── named choice sets ────────────────────────────────────
+     First entry is the default. Rendered as a segmented control with
+     the description underneath, so the difference between the two is
+     on screen rather than in someone's head. */
+  CT.CHOICES = {
+    /* Same load, same edge, and a completely different exercise: two
+       hands on a board splits the load, one hand does not. Logged
+       apart because they can't be compared. */
+    edgeStyle: [
+      { id:'hangboard', name:'Hangboard',  desc:'Both hands on the edge' },
+      { id:'onehand',   name:'Edge pulls', desc:'One hand at a time' }
+    ],
+    /* Mirrors CT.GRIPS, which is the strength protocol's own pair —
+       the same two positions, asked about in endurance work too. */
+    grip: [
+      { id:'half', name:'Half-crimp',         desc:'Thumb off, fingers at 90°' },
+      { id:'tfd',  name:'Three-finger drag',  desc:'Open hand, index off' }
+    ]
+  };
+  CT.choiceName = function (set, id) {
+    const o = (CT.CHOICES[set] || []).find(x => x.id === id);
+    return o ? o.name : null;
+  };
+
+  /* ── effort ───────────────────────────────────────────────
+     Five points, each with a sentence that says what it feels like.
+     A ten-point scale asks people to tell 6 from 7, which nobody can
+     do twice the same way; five they can, and the wording is the
+     whole reason — so it travels with the value rather than living in
+     a help page. */
+  CT.RPE = {
+    min: 1, max: 5, default: 3,
+    scale: [
+      { v:1, name:'Easy',        desc:'Can sustain all day.' },
+      { v:2, name:'Sustainable', desc:'Light pump but sustainable.' },
+      { v:3, name:'Worked',      desc:'Feeling worked.' },
+      { v:4, name:'Hard',        desc:'Had to try hard.' },
+      { v:5, name:'Maximal',     desc:'Maximal all out effort.' }
+    ]
+  };
+  /* Which scale a stored number is on. A 4 means "hard" on the new
+     scale and "easy" on the old one, and nothing about the number
+     itself says which — so every session saved from here on says so,
+     and a session that doesn't say is one from before the change. */
+  CT.RPE.key = 'rpeScale';
+  CT.rpeValue = function (v) {
+    if (typeof v !== 'number' || !isFinite(v)) return null;
+    return Math.max(CT.RPE.min, Math.min(CT.RPE.max, Math.round(v)));
+  };
+  CT.rpeLabel = function (v) {
+    const n = CT.rpeValue(v);
+    const s = CT.RPE.scale.find(x => x.v === n);
+    return s ? s.name : '';
+  };
+
+  /* ── field schemas ────────────────────────────────────────
+     [key, label, kind, default]
+
+     kinds
+       select    a fixed list, given as a comma-separated string
+       number    a plain count
+       kg        a load
+       duration  minutes and seconds, stored as whole seconds
+       rpe       the five-point effort scale above
+       choice    a named set from CT.CHOICES
+       grade     one grade off a ladder, optional behind a toggle
+       climbs    as many grade/count rows as the session actually had
+
+     Durations are stored in seconds throughout — a field that means
+     minutes in one form and seconds in the next is how a 4-minute
+     rest becomes a 4-second one. */
+  CT.FORMS = {
+    routes:      [ ['climbs','What you climbed','climbs','route'], ['durationSec','Time on the wall','duration',75*60], ['rpe','Effort','rpe',3] ],
+    traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','duration',180], ['restSec','Rest','duration',180], ['grade','Grade','grade','route'], ['rpe','Effort','rpe',3] ],
+    edgepulls:   [ ['style','Style','choice','edgeStyle'], ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workSec','Time per set','duration',180], ['rpe','Effort','rpe',3] ],
+    oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','grade','route'], ['rpe','Effort','rpe',3] ],
+    route4x4:    [ ['climbs','The four routes','climbs','route'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
+
+    boulder4x4:  [ ['climbs','The four problems','climbs','boulder'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
+    wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','duration',240], ['restSec','Rest','duration',300], ['rpe','Effort','rpe',4] ],
+    longboulder: [ ['climbs','Problems','climbs','boulder'], ['moves','Moves each','number',20], ['rpe','Effort','rpe',4] ],
+    repeaters:   [ ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm'], ['load','Load','kg',8], ['sets','Sets','number',6], ['rpe','Effort','rpe',4] ]
+  };
+
+  /* ── a list of climbs ─────────────────────────────────────
+     [{ grade:'6a', count:2 }, …] — the honest shape of a session,
+     rather than the hardest thing in it standing in for the rest. */
+  CT.climbs = {
+    total(list) { return (list || []).reduce((a, r) => a + (r.count || 0), 0); },
+    hardest(list, set) {
+      const ladder = CT.GRADES[set] || CT.GRADES.route;
+      let best = -1;
+      (list || []).forEach(r => {
+        if (!r.count) return;
+        const i = ladder.indexOf(r.grade);
+        if (i > best) best = i;
+      });
+      return best < 0 ? null : ladder[best];
+    },
+    /* "2 × 6a · 3 × 6a+ · 4 × 5c" — in the order they were entered,
+       because that is the order they were climbed in. */
+    text(list) {
+      return (list || []).filter(r => r.count > 0)
+        .map(r => r.count + ' × ' + r.grade).join(' · ');
+    },
+    short(list, set) {
+      const n = CT.climbs.total(list);
+      if (!n) return null;
+      const top = CT.climbs.hardest(list, set);
+      return n + (n === 1 ? ' climb' : ' climbs') + (top ? ' · to ' + top : '');
+    }
+  };
+
+  /* seconds → "1h 15m" · "3m 30s" · "45s" */
+  CT.fmtDuration = function (sec) {
+    if (typeof sec !== 'number' || !isFinite(sec) || sec <= 0) return null;
+    const s = Math.round(sec);
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    if (h) return h + 'h' + (m ? ' ' + m + 'm' : '');
+    if (m) return m + 'm' + (r ? ' ' + r + 's' : '');
+    return r + 's';
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     Reading what is already on the record.
+
+     The field schemas changed shape: minutes became seconds, a single
+     grade became a list of them, and effort went from ten points to
+     five. Old sessions are not rewritten — a stored document is what
+     someone actually recorded — so they are translated on the way in
+     instead, once, where the world is assembled. Anything saved after
+     an edit lands in the new shape on its own.
+     ═══════════════════════════════════════════════════════ */
+  const LEGACY = {
+    routes:      { minutes:{ duration:'durationSec' }, climbs:{ grade:'grade', count:'laps', set:'route' } },
+    edgepulls:   { minutes:{ workMin:'workSec' } },
+    route4x4:    { minutes:{ restMin:'restSec' }, climbs:{ grade:'grade', count:null, fallback:4, set:'route' } },
+    boulder4x4:  { minutes:{ restMin:'restSec' }, climbs:{ grade:'grade', count:null, fallback:4, set:'boulder' } },
+    wallcrawl:   { minutes:{ restMin:'restSec' } },
+    longboulder: { climbs:{ grade:'grade', count:'problems', set:'boulder' } }
+  };
+
+  CT.migrateFields = function (modality, fields) {
+    if (!fields) return fields;
+    const spec = LEGACY[modality];
+    let f = fields, copied = false;
+    const own = () => { if (!copied) { f = Object.assign({}, fields); copied = true; } return f; };
+
+    if (spec && spec.minutes) {
+      Object.keys(spec.minutes).forEach(from => {
+        if (typeof fields[from] !== 'number') return;
+        const to = spec.minutes[from];
+        const o = own();
+        if (typeof o[to] !== 'number') o[to] = Math.round(fields[from] * 60);
+        delete o[from];
+      });
+    }
+
+    if (spec && spec.climbs && !Array.isArray(fields.climbs)) {
+      const cs = spec.climbs, grade = fields[cs.grade];
+      if (grade) {
+        const count = cs.count && typeof fields[cs.count] === 'number' ? fields[cs.count] : (cs.fallback || 1);
+        const o = own();
+        o.climbs = [{ grade, count }];
+        delete o[cs.grade];
+        if (cs.count) delete o[cs.count];
+      }
+    }
+
+    /* Halving is the only mapping off the ten-point scale that keeps
+       the ordering intact. Applied here rather than written back —
+       the number someone recorded is not ours to overwrite — and only
+       to a session that never claimed to be on the five-point one. */
+    if (typeof fields.rpe === 'number' && fields[CT.RPE.key] !== CT.RPE.max) {
+      const o = own();
+      o.rpe = CT.rpeValue(fields.rpe / 2);
+      o[CT.RPE.key] = CT.RPE.max;
+    }
+    return f;
+  };
+
+  CT.migrateSession = function (ses) {
+    if (!ses || ses.type === 'strength' || !ses.fields) return ses;
+    const fields = CT.migrateFields(ses.modality, ses.fields);
+    return fields === ses.fields ? ses : Object.assign({}, ses, { fields });
   };
 
   /* ═══════════════════════════════════════════════════════
@@ -291,7 +473,28 @@
       const fields = {};
       CT.FORMS[mod.id].forEach(([key,, kind, def]) => {
         if (kind === 'select') { const o = String(def).split(','); fields[key] = o[Math.floor(rand()*o.length)]; }
-        else if (kind === 'rpe') fields[key] = Math.max(4, Math.min(10, Math.round(def + (rand()*2-1))));
+        else if (kind === 'choice') fields[key] = CT.CHOICES[def][Math.floor(rand() * CT.CHOICES[def].length)].id;
+        else if (kind === 'rpe') {
+          fields[key] = CT.rpeValue(def + Math.round(rand()*2 - 1));
+          fields[CT.RPE.key] = CT.RPE.max;
+        }
+        else if (kind === 'grade') {
+          /* optional by design — half the time nobody wrote one down */
+          const ladder = CT.GRADES[def];
+          fields[key] = rand() < 0.5 ? null : ladder[Math.floor(ladder.length * (0.3 + rand()*0.35))];
+        }
+        else if (kind === 'climbs') {
+          const ladder = CT.GRADES[def];
+          const base = Math.floor(ladder.length * (0.3 + rand()*0.3));
+          const rows = 2 + Math.floor(rand() * 2);
+          fields[key] = [];
+          for (let i = 0; i < rows; i++) {
+            const g = ladder[Math.max(0, Math.min(ladder.length - 1, base - i))];
+            if (fields[key].some(r => r.grade === g)) continue;
+            fields[key].push({ grade: g, count: 1 + Math.floor(rand() * 4) });
+          }
+        }
+        else if (kind === 'duration') fields[key] = Math.round(def * (0.85 + rand()*0.3) / 5) * 5;
         else fields[key] = Math.round(def * (0.85 + rand()*0.3));
       });
       const ses = { id: uid('ses'), date: slot.date, type: slot.type, modality: mod.id, fields, notes:'' };

@@ -229,10 +229,12 @@
         el('span', { class: 'sec__act tiny', text: `Today, or any past date back to ${dt.mini(c.block.start)}` })
       ]),
       quickLog(c),
+      /* A note from your coach, unless you are your coach — then it is
+         just something you wrote to yourself when you set the block up */
       c.coachNote ? el('div', { class: 'card', style: 'padding:16px 20px;display:flex;gap:12px;align-items:flex-start' }, [
         el('span', { class: 'who__av', text: CT.world.coach.initials }),
         el('div', {}, [
-          el('p', { class: 'eyebrow', text: 'Note from ' + CT.world.coach.name }),
+          el('p', { class: 'eyebrow', text: c.isSelf ? 'Note to yourself' : 'Note from ' + CT.world.coach.name }),
           el('p', { style: 'font-size:14.5px;margin-top:6px;line-height:1.5', text: c.coachNote })
         ])
       ]) : null
@@ -258,14 +260,32 @@
       return parts.join(' · ');
     }
     const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
+    const form = CT.FORMS[ses.modality] || [];
+    const f = ses.fields || {};
+
+    /* which grade ladder this modality counts in, if it counts climbs */
+    const climbSpec = form.find(x => x[2] === 'climbs');
+
+    /* "Hangboard" and "Edge pulls" are different exercises sharing one
+       modality, so the style leads rather than the modality's name. */
+    const head = f.style ? CT.choiceName('edgeStyle', f.style)
+               : mod ? mod.name : CT.TYPE[ses.type].label;
+
     const bits = [];
-    if (ses.fields) {
-      if (ses.fields.grade) bits.push(ses.fields.grade);
-      if (ses.fields.laps) bits.push(ses.fields.laps + ' laps');
-      if (ses.fields.sets) bits.push(ses.fields.sets + ' sets');
-      if (ses.fields.rounds) bits.push(ses.fields.rounds + ' rounds');
-      if (ses.fields.rpe) bits.push('RPE ' + ses.fields.rpe);
+    if (climbSpec && Array.isArray(f.climbs)) {
+      const s = CT.climbs.short(f.climbs, climbSpec[3]);
+      if (s) bits.push(s);
     }
-    return [mod ? mod.name : CT.TYPE[ses.type].label].concat(bits.slice(0, 3)).join(' · ');
+    if (f.grip) bits.push(CT.choiceName('grip', f.grip));
+    if (f.grade) bits.push(f.grade);
+    if (f.load) bits.push(f.load + ' kg');
+    if (f.sets) bits.push(f.sets + ' sets');
+    if (f.rounds) bits.push(f.rounds + ' rounds');
+    if (f.durationSec) bits.push(CT.fmtDuration(f.durationSec));
+
+    /* effort is the one field worth keeping whatever else got trimmed */
+    const rpe = CT.rpeValue(f.rpe);
+    return [head].concat(bits.filter(Boolean).slice(0, 3))
+      .concat(rpe ? ['RPE ' + rpe] : []).join(' · ');
   };
 })();

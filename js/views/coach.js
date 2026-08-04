@@ -29,6 +29,7 @@
     ]));
 
     if (CT.repo.enabled) wrap.appendChild(ownTrainingCard(mine));
+    if (mine) wrap.appendChild(targetCard(mine));
     roster.forEach(c => wrap.appendChild(targetCard(c)));
 
     host.appendChild(wrap);
@@ -68,12 +69,13 @@
           el('p', { class: 'sub', style: 'margin-top:2px',
             text: `Week ${week} of ${mine.block.weeks} · ${S.phase(mine)} · ${wp.have} of ${wp.need} this week` })
         ]),
-        el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'Switch to it',
-          onclick: () => { S.setUser(mine.id); CT.go('dashboard'); } })
+        el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'Open my training',
+          onclick: () => { S.setViewing(mine.id); CT.go('dashboard'); } })
       ]),
       el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [
         el('p', { class: 'tiny', text:
-          'Logging is disabled while you’re looking at someone as their coach. Switch to yourself to log your own sessions.' })
+          'This is your own dashboard, plan and progress — not a second account. Logging is disabled only while ' +
+          'you’re looking at somebody you coach.' })
       ])
     ]);
   }
@@ -113,14 +115,40 @@
               [ c.invitePin || 'No code' ])
           : wp.hit ? el('span', { class: 'chip chip--spruce', text: 'On target' })
                    : el('span', { class: 'chip', text: `${wp.need - wp.have} left` }),
+        /* A block set up for yourself through the ordinary onboarding
+           form is an athlete record nobody has claimed, sitting in the
+           roster as if it were a client. Saying so puts it where it
+           belongs — under your own view — without touching a single
+           session on it. */
+        waiting ? CT.armButton(() => claimSelf(c), 'This is me',
+            'Tap again — it leaves the roster', 'btn btn--quiet btn--sm', 'check') : null,
         CT.repo.enabled && !waiting
           ? el('button', { class: 'btn btn--quiet btn--sm', text: 'Access',
               onclick: () => CT.views.inviteCode(c) })
           : null,
         el('button', { class: 'btn btn--ghost btn--sm', text: 'Open',
-          onclick: () => { CT.state.activeClient = c.id; CT.go('dashboard'); } })
+          onclick: () => { S.setViewing(c.id); CT.go('dashboard'); } })
       ])
     ]);
+  }
+
+  /* Claiming a record as your own. Nothing about the training moves —
+     the only thing that changes is who holds it, and it was already
+     only ever you. Any code still outstanding is withdrawn with it,
+     since there is nobody left to hand it to. */
+  async function claimSelf(c) {
+    try {
+      await CT.repo.claimSelf(c.id);
+    } catch (e) {
+      toast('Couldn’t claim that record', CT.fb.message(e));
+      return;
+    }
+    c.isSelf = true;
+    c.clientUid = CT.repo.user ? CT.repo.user.uid : null;
+    c.invitePin = null;
+    S.setViewing(c.id);
+    CT.render(false);
+    toast('That’s your training now', `${c.full} is off the roster and under your own view.`);
   }
 
   function targetCard(c) {
@@ -139,7 +167,7 @@
         val.textContent = String(nv);
         motion.pop(val, .7);
         summary.textContent = summaryText(c);
-        toast(`${c.name}: ${name.toLowerCase()} target set to ${nv}`,
+        toast(`${c.isSelf ? 'Your' : c.name + '’s'} ${name.toLowerCase()} target set to ${nv}`,
               'The plan updated from this week onwards. Logged sessions stay put.');
       };
       return el('div', { class: 'target' }, [
@@ -162,11 +190,11 @@
       el('div', { class: 'card__hd' }, [
         el('span', { class: 'client__av', style: 'width:30px;height:30px;font-size:11px', text: c.initials }),
         el('div', {}, [
-          el('h3', { class: 'h-card', text: c.name + '’s weekly targets' }),
+          el('h3', { class: 'h-card', text: c.isSelf ? 'Your weekly targets' : c.name + '’s weekly targets' }),
           el('p', { class: 'sub', style: 'margin-top:2px', text: 'What counts as a complete week' })
         ]),
         el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'View schedule',
-          onclick: () => { CT.state.activeClient = c.id; CT.go('schedule'); } })
+          onclick: () => { S.setViewing(c.id); CT.go('schedule'); } })
       ]),
       body,
       el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [ summary ])

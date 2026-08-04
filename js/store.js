@@ -34,15 +34,37 @@
 
     /* A coach who trains has an athlete record of their own, sitting in
        the same collection as everybody else's because it is the same
-       kind of thing. It just isn't a client — so the roster leaves it
-       out, and the coach's own screens are the only place it shows up. */
+       kind of thing. It is not a second account and not a second person
+       in the switcher: it is what the coach's own dashboard, plan and
+       progress screens are built from. The roster leaves it out. */
     selfAthlete() { return Object.values(CT.world.clients).find(c => c.isSelf) || null; },
     roster()      { return Object.values(CT.world.clients).filter(c => !c.isSelf); },
+
+    /* Is the coach looking at their own training rather than
+       somebody's they coach? Everything that separates the two — the
+       context bar, the quick-log buttons, whether a log sheet will
+       open at all — hangs off this one answer. */
+    viewingSelf() {
+      if (!S.isCoach()) return false;
+      const c = S.client();
+      return !!(c && c.isSelf);
+    },
+    /* Logging is yours to do on your own record and nobody else's. */
+    canLog() { return !S.isCoach() || S.viewingSelf(); },
 
     setUser(id) {
       state.viewAs = id;
       if (id !== 'coach') state.activeClient = id;
       state.weekOffset = 0;
+    },
+
+    /* Coach-side navigation between athletes — including back to
+       themselves, which is an athlete record like any other. */
+    setViewing(id) {
+      if (!id || !CT.world.clients[id]) return false;
+      state.activeClient = id;
+      state.weekOffset = 0;
+      return true;
     },
 
     /* ── block / phase ───────────────────────────────────── */

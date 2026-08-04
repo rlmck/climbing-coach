@@ -105,6 +105,11 @@
         const total = CT.GRIPS.reduce((a, g) => a + ses.reps[g.id].filter(Boolean).length, 0);
         return total + '/6 clean';
       }
+      /* a day cell is narrow, so the style beats the modality's name
+         wherever one was recorded — "Hangboard" says more than
+         "Hangboard / Edge Pulls" in the same width */
+      const f = ses.fields || {};
+      if (f.style) return CT.choiceName('edgeStyle', f.style) || 'Logged';
       const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
       return mod ? mod.name : 'Logged';
     }

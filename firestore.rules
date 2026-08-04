@@ -162,6 +162,24 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['members', 'clientUid', 'claimedAt']);
 
+      /* A coach folding a record into their own training. Setting a
+         block up for yourself through the ordinary onboarding form
+         leaves an athlete nobody has claimed, which then sits in the
+         roster looking like a client waiting for a code. This says it
+         is the coach's own.
+
+         Nothing about reach changes: they are already the owner and
+         already the only member, and the write cannot add one. The
+         code goes because there is no longer anybody to hand it to. */
+      allow update: if isCoach()
+        && uid() == resource.data.coachId
+        && resource.data.clientUid == null
+        && request.resource.data.clientUid == uid()
+        && request.resource.data.members == resource.data.members
+        && request.resource.data.coachId == resource.data.coachId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['clientUid', 'invitePin', 'inviteExpires']);
+
       /* Starting again. A phone goes in a river, a browser gets cleared,
          and the anonymous account that *was* this athlete is gone with
          no way to reconstruct it. The coach puts the record back to just

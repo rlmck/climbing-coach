@@ -257,25 +257,116 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .input:focus{ background:var(--surface); border-color:var(--spruce); box-shadow:0 0 0 3px var(--spruce-tint); }
 
 /* range */
-.rpe{ display:flex; align-items:center; gap:14px; }
-input[type=range]{
-  -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
-  background:var(--line-2); flex:1; outline:none;
+/* ── effort, on five points ───────────────────────────────
+   A slider asked for a number between 1 and 10, which is a number
+   nobody can reproduce. Five buttons, each with a sentence behind
+   it, and the sentences one tap away. */
+.rpeset{ display:flex; flex-direction:column; gap:9px; }
+.rpeset__row{ display:grid; grid-template-columns:repeat(5,1fr); gap:6px; }
+.rpeset__b{
+  height:44px; border-radius:10px;
+  font-size:16px; font-weight:600; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums;
+  background:var(--surface-2); color:var(--ink-2);
+  box-shadow:inset 0 0 0 1px var(--line-2);
+  transition:background .16s, color .16s, box-shadow .16s, transform .1s;
 }
-input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none; width:20px; height:20px; border-radius:50%;
-  background:var(--surface); box-shadow:0 1px 4px rgba(16,18,20,.22), inset 0 0 0 1px var(--line-2);
-  cursor:grab;
+.rpeset__b:hover{ box-shadow:inset 0 0 0 1px var(--ink-4); color:var(--ink); }
+.rpeset__b:active{ transform:scale(.96); }
+.rpeset__b[aria-pressed="true"]{
+  background:var(--ink); color:#fff; box-shadow:none;
 }
-input[type=range]::-webkit-slider-thumb:active{ cursor:grabbing; }
-input[type=range]::-moz-range-thumb{
-  width:20px; height:20px; border:0; border-radius:50%;
-  background:var(--surface); box-shadow:0 1px 4px rgba(16,18,20,.22), inset 0 0 0 1px var(--line-2);
+.rpeset__l{ font-size:13px; color:var(--ink-2); line-height:1.45; }
+.rpeset__help{
+  display:inline-flex; align-items:center; gap:6px; align-self:flex-start;
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-3); transition:color .15s;
 }
-.rpe__val{
-  font-family:var(--mono); font-size:15px; font-weight:500;
-  min-width:56px; text-align:right; letter-spacing:-.01em;
+.rpeset__help:hover{ color:var(--ink); }
+.rpeset__help svg{ width:13px; height:13px; }
+
+.rpeguide{
+  display:flex; flex-direction:column; gap:1px; overflow:hidden;
+  border:1px solid var(--line); border-radius:var(--r-md); background:var(--surface-2);
 }
+.rpeguide__r{
+  display:flex; gap:11px; align-items:flex-start; padding:9px 12px;
+  transition:background .16s;
+}
+.rpeguide__r.is-on{ background:var(--spruce-tint); }
+.rpeguide__n{
+  flex:none; width:22px; height:22px; border-radius:6px; display:grid; place-items:center;
+  font-family:var(--mono); font-size:11.5px; font-weight:500;
+  background:var(--surface-3); color:var(--ink-2);
+}
+.rpeguide__r.is-on .rpeguide__n{ background:var(--spruce); color:#fff; }
+.rpeguide__t{ font-size:13.5px; font-weight:600; letter-spacing:-.012em; }
+.rpeguide__d{ font-size:12.5px; color:var(--ink-3); margin-top:1px; line-height:1.4; }
+
+/* ── minutes and seconds ────────────────────────────────── */
+.dur{ display:grid; grid-template-columns:1fr auto 1fr auto; align-items:center; gap:7px; }
+.dur input{ text-align:center; font-variant-numeric:tabular-nums; padding:0 6px; }
+.dur__u{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+
+/* ── one of two named things ────────────────────────────── */
+.choices{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; }
+.choice{
+  padding:11px 13px; border-radius:var(--r-md); text-align:left;
+  background:var(--surface-2); box-shadow:inset 0 0 0 1px var(--line-2);
+  transition:box-shadow .18s, background .18s, transform .1s;
+}
+.choice:hover{ box-shadow:inset 0 0 0 1px var(--ink-4); }
+.choice:active{ transform:scale(.985); }
+.choice[aria-pressed="true"]{ background:var(--ink); box-shadow:none; }
+.choice__n{ display:block; font-size:14px; font-weight:600; letter-spacing:-.015em; }
+.choice__d{ display:block; font-size:12px; color:var(--ink-3); margin-top:2px; line-height:1.35; }
+.choice[aria-pressed="true"] .choice__n{ color:#fff; }
+.choice[aria-pressed="true"] .choice__d{ color:rgba(255,255,255,.6); }
+
+/* ── an optional grade ──────────────────────────────────── */
+.optgrade{ display:flex; flex-direction:column; gap:7px; }
+.optgrade__hd{ display:flex; align-items:center; gap:9px; }
+.optgrade__l{ font-size:13px; color:var(--ink-2); }
+.optgrade select[disabled]{ opacity:.45; cursor:not-allowed; }
+.switch{
+  flex:none; width:38px; height:22px; border-radius:11px; padding:2px;
+  background:var(--line-2); display:flex; align-items:center;
+  transition:background .18s;
+}
+.switch[aria-checked="true"]{ background:var(--spruce); }
+.switch__k{
+  width:18px; height:18px; border-radius:50%; background:#fff;
+  box-shadow:0 1px 3px rgba(16,18,20,.24);
+  transition:transform .18s cubic-bezier(.34,1.4,.64,1);
+}
+.switch[aria-checked="true"] .switch__k{ transform:translateX(16px); }
+
+/* ── what you actually climbed ──────────────────────────── */
+.climbs{ display:flex; flex-direction:column; gap:9px; }
+.climbs__list{ display:flex; flex-direction:column; gap:7px; }
+.climbs__r{ display:flex; align-items:center; gap:9px; }
+.climbs__x{ font-size:13px; color:var(--ink-4); flex:none; }
+.climbs__g{ flex:1; min-width:0; }
+.climbs__n{ min-width:24px; }
+.climbs__rm{
+  flex:none; width:30px; height:30px; border-radius:8px; display:grid; place-items:center;
+  color:var(--ink-4); transition:background .14s, color .14s;
+}
+.climbs__rm svg{ width:14px; height:14px; }
+.climbs__rm:hover{ background:var(--clay-tint); color:var(--clay); }
+.climbs__none{ padding:4px 0; }
+.climbs__ft{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.climbs__add{ box-shadow:inset 0 0 0 1px var(--line-2); }
+.climbs__sum{
+  margin-left:auto; font-family:var(--mono); font-size:11px;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3);
+}
+.stepper--sm{ flex:none; }
+.stepper--sm button{ width:24px; height:24px; }
+.stepper--sm span{ min-width:24px; font-size:13.5px; }
 
 /* segmented control */
 .seg{
@@ -1099,6 +1190,9 @@ input[type=range]::-moz-range-thumb{
   .day > .btn--quiet{ flex:0 0 auto; margin-top:0 !important; width:auto !important; }
 
   .formgrid{ grid-template-columns:1fr; }
+  /* the summary drops under the button rather than squeezing it */
+  .climbs__sum{ margin-left:0; width:100%; }
+  .choices{ grid-template-columns:1fr; }
   .client{ grid-template-columns:auto 1fr; row-gap:12px; padding:14px 16px; }
   .client .kv{ grid-column:span 1; }
   .proto{ flex-wrap:wrap; }
@@ -1157,8 +1251,6 @@ input[type=range]::-moz-range-thumb{
 .is-pwa .main, .is-pwa .rail, .is-pwa .sheet-host, .is-pwa .sheet__bd{
   overscroll-behavior:contain;   /* don't chain an over-scroll out to the page */
 }
-/* the RPE slider is dragged, not panned over — it needs the touch back */
-.is-pwa input[type=range]{ touch-action:none; }
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{ animation-duration:.01ms !important; transition-duration:.01ms !important; }

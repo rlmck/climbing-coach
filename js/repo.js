@@ -109,7 +109,12 @@
          only difference is that they are both ends of it. */
       isSelf: !!(repo.user && d.coachId === repo.user.uid && d.clientUid === repo.user.uid),
       slots: c.slots || [],
-      sessions: c.sessions || [],
+      /* Field schemas have moved on — minutes to seconds, one grade to
+         a list of them, ten points of effort to five. Old documents are
+         translated here rather than rewritten in the database, so what
+         someone recorded stays what they recorded and every screen
+         downstream only ever sees the current shape. */
+      sessions: (c.sessions || []).map(CT.migrateSession),
       bodyweight: (c.bodyweight || []).slice().sort((a, b) => a.date < b.date ? -1 : 1),
       maxHang: (c.maxHang || []).slice().sort((a, b) => a.date < b.date ? -1 : 1),
       criticalForce: (c.criticalForce || []).slice().sort((a, b) => a.date < b.date ? -1 : 1)
@@ -259,6 +264,27 @@
       return { pin, expiresAt };
     }
     throw last || { code: 'invite/unknown' };
+  };
+
+  /* A record the coach set up for their own training, said out loud.
+     Onboarding through the ordinary form leaves an athlete nobody has
+     claimed, which the roster then shows as a client waiting for a
+     code; this claims it for the coach instead. They were already the
+     only member, so nothing about who can reach the training changes —
+     only whether the app calls it theirs. The outstanding code goes
+     with it, because there is no longer anyone to give it to. */
+  repo.claimSelf = async function (athleteId) {
+    const { doc, updateDoc, deleteDoc } = F();
+    const pin = (CT.world.clients[athleteId] || {}).invitePin;
+    await updateDoc(doc(fb().db, 'athletes', athleteId), {
+      clientUid: repo.user.uid,
+      invitePin: null,
+      inviteExpires: null
+    });
+    /* Withdrawn on a best-effort basis: an unreachable invite document
+       is a code that opens a record which is no longer claimable, so a
+       failure here costs nothing. */
+    if (pin) { try { await deleteDoc(doc(fb().db, 'invites', pin)); } catch (e) { /* already gone */ } }
   };
 
   /* Handing out a second code. The record goes back to just the coach

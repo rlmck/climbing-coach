@@ -34,27 +34,57 @@
     });
 
     /* Signed in, an athlete is only ever themselves — there is nobody to
-       switch to and no pretending otherwise. A coach still switches
-       between their own view and each athlete's. */
-    const isClient = CT.repo.enabled && CT.repo.profile && CT.repo.profile.role === 'client';
+       switch to and no pretending otherwise.
+
+       A coach who trains is one entry, not two. Their own athlete
+       record is what their dashboard, plan and progress screens are
+       already built from, so "you" and "coach" are the same row: it
+       selects their own training if they've set a block up, and their
+       roster if they haven't. */
+    const role = CT.repo.enabled && CT.repo.profile ? CT.repo.profile.role : null;
+    const isClient = role === 'client';
+    /* Signed in as a coach, picking an athlete changes whose record is
+       on screen and nothing about who you are. With no backend there is
+       no signed-in anybody, and the switcher's job is the older one of
+       becoming each mock person in turn. */
+    const isCoachAcct = role === 'coach';
+
     const sw = CT.ui.clear(CT.ui.$('#switcher'));
-    const people = isClient ? S.clients() : [CT.world.coach, ...S.clients()];
+    const mine = S.selfAthlete();
+    const people = isClient
+      ? S.clients().map(p => ({ id: p.id, initials: p.initials, name: p.name, role: 'You' }))
+      : [{ id: 'coach', initials: CT.world.coach.initials, name: CT.world.coach.name,
+           role: mine ? 'You · coach' : 'Coach' }]
+          .concat(S.roster().map(p => ({ id: p.id, initials: p.initials, name: p.name, role: 'Client' })));
+
+    const selected = isClient ? CT.state.viewAs
+      : !S.isCoach() ? CT.state.viewAs
+      : S.viewingSelf() || CT.state.route === 'clients' ? 'coach' : CT.state.activeClient;
+
     people.forEach(p => {
       sw.appendChild(el('button', {
-        class: 'who', 'aria-pressed': String(CT.state.viewAs === p.id),
+        class: 'who', 'aria-pressed': String(selected === p.id),
         disabled: isClient || null,
         onclick: () => {
-          if (isClient || CT.state.viewAs === p.id) return;
-          S.setUser(p.id);
-          CT.go(p.id === 'coach' ? 'clients' : 'dashboard');
+          if (isClient) return;
+          if (p.id === 'coach') {
+            S.setUser('coach');
+            /* their own training if there is any, otherwise the roster —
+               there is nothing else the coach's own view could be */
+            if (mine && S.setViewing(mine.id)) CT.go('dashboard');
+            else CT.go('clients');
+            return;
+          }
+          if (!isCoachAcct) { S.setUser(p.id); CT.go('dashboard'); return; }
+          if (S.isCoach() && CT.state.activeClient === p.id && CT.state.route !== 'clients') return;
+          S.setUser('coach');
+          S.setViewing(p.id);
+          CT.go('dashboard');
         }
       }, [
         el('span', { class: 'who__av', text: p.initials }),
         el('span', { class: 'who__name', text: p.name }),
-        /* A coach who trains appears twice, and the labels are the whole
-           difference: one entry is the roster, the other is their own
-           logging. "You" beats a second "Coach" nobody can tell apart. */
-        el('span', { class: 'who__role', text: p.role === 'coach' ? 'Coach' : p.isSelf ? 'You' : 'Client' })
+        el('span', { class: 'who__role', text: p.role })
       ]));
     });
 
@@ -75,9 +105,10 @@
       ]));
     }
 
-    /* quick logging belongs to the athlete, not the coach */
+    /* quick logging belongs to whoever's record is on screen — which is
+       the coach's own, when that's what they're looking at */
     const c = S.client();
-    CT.ui.$('.rail__log').style.display = (S.isCoach() || !c) ? 'none' : '';
+    CT.ui.$('.rail__log').style.display = (!S.canLog() || !c) ? 'none' : '';
     CT.ui.$$('.quick').forEach(b => {
       const type = b.dataset.log;
       b.style.display = (!c || (type === 'pe' && !S.inPEPhase(c))) ? 'none' : '';
@@ -127,6 +158,11 @@
     if (S.isCoach()) {
       bar.appendChild(tab('clients', 'Clients', 'people'));
       bar.appendChild(tab('dashboard', 'Home', 'dashboard'));
+      /* The log button is only ever offered where a log can land */
+      if (S.canLog()) bar.appendChild(el('button', {
+        class: 'tab tab--log', 'aria-label': 'Log a session',
+        onclick: () => CT.openLog(null, {})
+      }, [ icon('plus') ]));
       bar.appendChild(tab('schedule', 'Plan', 'calendar'));
       bar.appendChild(tab('progress', 'Progress', 'chart'));
       return;
@@ -157,7 +193,9 @@
     const bar = CT.ui.clear(CT.ui.$('#topbar'));
     const r = ROUTES[CT.state.route] || ROUTES.dashboard;
     const c = S.client();
-    const coachViewing = S.isCoach() && CT.state.route !== 'clients';
+    /* Looking at somebody else's record — as opposed to their own,
+       which needs no framing at all */
+    const coachViewing = S.isCoach() && CT.state.route !== 'clients' && !S.viewingSelf();
 
     bar.appendChild(el('button', {
       class: 'btn btn--quiet railtoggle', 'aria-label': 'Menu',
@@ -173,11 +211,19 @@
 
     bar.appendChild(el('span', { class: 'topbar__spacer' }));
 
-    if (coachViewing) {
-      bar.appendChild(el('div', { class: 'seg' }, S.clients().map(cl =>
-        el('button', { text: cl.name, 'aria-pressed': String(cl.id === CT.state.activeClient),
-          onclick: () => { CT.state.activeClient = cl.id; render(); } })
-      )));
+    /* Whose record these screens are showing. The coach's own sits at
+       the front labelled "You", because that is the one they'll be
+       coming back to. */
+    if (S.isCoach() && CT.state.route !== 'clients') {
+      const mine = S.selfAthlete();
+      const entries = (mine ? [{ id: mine.id, label: 'You' }] : [])
+        .concat(S.roster().map(cl => ({ id: cl.id, label: cl.name })));
+      if (entries.length > 1) {
+        bar.appendChild(el('div', { class: 'seg' }, entries.map(e =>
+          el('button', { text: e.label, 'aria-pressed': String(e.id === CT.state.activeClient),
+            onclick: () => { if (S.setViewing(e.id)) render(); } })
+        )));
+      }
     }
   }
 
@@ -204,8 +250,9 @@
         return;
       }
 
-      /* coach context bar sits above the client's own screens */
-      if (S.isCoach() && CT.state.route !== 'clients') {
+      /* Coach context bar sits above a *client's* screens. Their own
+         training needs no explaining to them, so it stays off there. */
+      if (S.isCoach() && CT.state.route !== 'clients' && !S.viewingSelf()) {
         node.appendChild(el('div', { class: 'asbar', style: 'margin:0 0 16px' }, [
           el('span', { class: 'asbar__pill', text: 'Coach view' }),
           el('span', { text: `You're looking at ${c.full}'s ${ROUTES[CT.state.route].title.toLowerCase()}. Logging is disabled here.` }),
@@ -237,8 +284,13 @@
       toast('No block set up yet', 'There’s nothing to log against until your coach starts one.');
       return;
     }
-    if (S.isCoach()) {
-      toast('Coaches don’t log sessions', `Switch to ${c.name} in the corner to log on their behalf.`);
+    /* You log on your own record. A coach has one of those too — this
+       only ever stops them typing into somebody else's. */
+    if (!S.canLog()) {
+      const mine = S.selfAthlete();
+      toast(`This is ${c.name}’s record`, mine
+        ? 'Switch to your own training in the corner to log a session.'
+        : 'Set up your own block from the Clients screen to log your training.');
       return;
     }
     opts = opts || {};
@@ -330,11 +382,12 @@
         if (CT.state.route === 'clients') CT.state.route = 'dashboard';
       } else {
         CT.state.viewAs = 'coach';
-        /* A coach lands on somebody they coach. Their own training is a
-           deliberate switch, not the default view. */
-        const roster = S.roster();
+        /* A coach lands on their own training if they have any — their
+           dashboard is their dashboard. Failing that, on the first
+           athlete they coach. */
+        const mine = S.selfAthlete(), roster = S.roster();
         if (!CT.state.activeClient || !CT.world.clients[CT.state.activeClient]) {
-          CT.state.activeClient = (roster[0] && roster[0].id) || ids[0] || null;
+          CT.state.activeClient = (mine && mine.id) || (roster[0] && roster[0].id) || ids[0] || null;
         }
         CT.state.route = ids.length ? CT.state.route : 'clients';
       }

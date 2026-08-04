@@ -6,8 +6,213 @@
 (function () {
   const CT = window.CT, { el, icon, motion, toast } = CT.ui, S = CT.store, dt = CT.dt;
 
-  const RPE = v => v <= 3 ? 'Easy' : v <= 5 ? 'Steady' : v <= 7 ? 'Hard' : v <= 9 ? 'Very hard' : 'Maximal';
-  const UNIT = { minutes: 'min', seconds: 's', kg: 'kg', number: '' };
+  const UNIT = { kg: 'kg', number: '' };
+
+  /* ═══════════════ field controls ═══════════════
+     One function per kind in CT.FORMS. Each takes the value it starts
+     at and a setter, and hands back a node — the form itself never
+     knows what any of them are made of. */
+
+  /* ── effort ──────────────────────────────────────────────
+     Five buttons rather than a slider: the scale is now short enough
+     to show whole, and every point on it has a sentence attached.
+     The sentences are one tap away rather than on screen permanently,
+     because after the first few sessions nobody needs them — but the
+     first few sessions are exactly when a number gets anchored. */
+  function rpeControl(init, set) {
+    let value = CT.rpeValue(init) || CT.RPE.default;
+    let open = false;
+
+    const label = el('p', { class: 'rpeset__l' });
+    const rows = CT.RPE.scale.map(s => el('div', { class: 'rpeguide__r', 'data-v': s.v }, [
+      el('span', { class: 'rpeguide__n', text: String(s.v) }),
+      el('div', {}, [
+        el('p', { class: 'rpeguide__t', text: s.name }),
+        el('p', { class: 'rpeguide__d', text: s.desc })
+      ])
+    ]));
+    const guide = el('div', { class: 'rpeguide', style: 'display:none' }, rows);
+
+    const toggle = el('button', {
+      type: 'button', class: 'rpeset__help', 'aria-expanded': 'false',
+      onclick: () => {
+        open = !open;
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.firstChild.textContent = open ? 'Hide the scale' : 'What the numbers mean';
+        motion.collapse(guide, open);
+      }
+    }, [ el('span', { text: 'What the numbers mean' }), icon('info') ]);
+
+    const btns = CT.RPE.scale.map(s => el('button', {
+      type: 'button', class: 'rpeset__b', text: String(s.v),
+      'aria-label': `${s.v} — ${s.name}. ${s.desc}`,
+      onclick: () => paint(s.v, true)
+    }));
+
+    function paint(v, fire) {
+      value = v;
+      btns.forEach((b, i) => b.setAttribute('aria-pressed', String(CT.RPE.scale[i].v === v)));
+      rows.forEach(r => r.classList.toggle('is-on', +r.dataset.v === v));
+      const s = CT.RPE.scale.find(x => x.v === v);
+      label.textContent = s ? s.v + ' · ' + s.name + ' — ' + s.desc : '';
+      if (fire) set(v);
+    }
+    paint(value, false);
+    set(value);
+
+    return el('div', { class: 'rpeset' }, [
+      el('div', { class: 'rpeset__row' }, btns),
+      label,
+      toggle,
+      guide
+    ]);
+  }
+
+  /* ── minutes and seconds ─────────────────────────────────
+     Stored as whole seconds. Two boxes because that is how anyone
+     reads a stopwatch, and 3:30 was previously either "3" or "4". */
+  function durationControl(init, set) {
+    let total = Math.max(0, Math.round(init || 0));
+
+    const mins = el('input', { class: 'input', type: 'number', min: 0, step: 1,
+      'aria-label': 'Minutes', value: Math.floor(total / 60), oninput: read });
+    const secs = el('input', { class: 'input', type: 'number', min: 0, max: 59, step: 5,
+      'aria-label': 'Seconds', value: total % 60, oninput: read });
+
+    /* The two boxes are added, not validated against each other — 90
+       typed into the seconds box is a minute and a half, which is what
+       whoever typed it meant. The spinner still stops at 59. */
+    function read() {
+      const m = Math.max(0, Math.floor(+mins.value || 0));
+      const s = Math.max(0, Math.floor(+secs.value || 0));
+      total = m * 60 + s;
+      set(total);
+    }
+    set(total);
+
+    return el('div', { class: 'dur' }, [
+      mins, el('span', { class: 'dur__u', text: 'min' }),
+      secs, el('span', { class: 'dur__u', text: 'sec' })
+    ]);
+  }
+
+  /* ── one of two named things ─────────────────────────── */
+  function choiceControl(setName, init, set) {
+    const opts = CT.CHOICES[setName] || [];
+    let value = opts.some(o => o.id === init) ? init : (opts[0] || {}).id;
+    const btns = opts.map(o => el('button', {
+      type: 'button', class: 'choice', 'aria-pressed': String(o.id === value),
+      onclick: () => paint(o.id, true)
+    }, [
+      el('span', { class: 'choice__n', text: o.name }),
+      el('span', { class: 'choice__d', text: o.desc })
+    ]));
+    function paint(v, fire) {
+      value = v;
+      btns.forEach((b, i) => b.setAttribute('aria-pressed', String(opts[i].id === v)));
+      if (fire) set(v);
+    }
+    set(value);
+    return el('div', { class: 'choices' }, btns);
+  }
+
+  /* ── a grade, if there was one ───────────────────────────
+     Traversing rarely has a grade anybody would defend, and being
+     made to pick one turns the field into noise. Off by default,
+     and off is stored as nothing rather than as a guess. */
+  function gradeControl(ladderName, init, set) {
+    const ladder = CT.GRADES[ladderName] || CT.GRADES.route;
+    let value = init || null;
+    let on = !!value;
+
+    const select = el('select', { class: 'input', disabled: !on,
+      onchange: e => { value = e.target.value; set(value); } },
+      ladder.map(g => el('option', { value: g, text: g,
+        selected: g === (value || CT.GRADE_DEFAULT[ladderName]) || null })));
+
+    const sw = el('button', { type: 'button', class: 'switch', role: 'switch',
+      'aria-checked': String(on), 'aria-label': 'Record a grade',
+      onclick: () => {
+        on = !on;
+        sw.setAttribute('aria-checked', String(on));
+        select.disabled = !on;
+        value = on ? select.value : null;
+        set(value);
+      }
+    }, [ el('span', { class: 'switch__k' }) ]);
+
+    set(value);
+    return el('div', { class: 'optgrade' }, [
+      el('div', { class: 'optgrade__hd' }, [
+        sw, el('span', { class: 'optgrade__l', text: 'Record a grade' })
+      ]),
+      select
+    ]);
+  }
+
+  /* ── what you actually climbed ───────────────────────────
+     "2 × 6a, then 3 × 6a+, then 4 × 5c" is a session. The hardest
+     thing in it is not, and asking only for that threw away the
+     volume — which for endurance work is the point of the session.
+     Rows in the order they were entered, because that is the order
+     they were climbed in. */
+  function climbsControl(ladderName, init, set) {
+    const ladder = CT.GRADES[ladderName] || CT.GRADES.route;
+    const rows = (Array.isArray(init) ? init : [])
+      .filter(r => r && r.grade)
+      .map(r => ({ grade: r.grade, count: Math.max(1, r.count || 1) }));
+
+    const list = el('div', { class: 'climbs__list' });
+    const summary = el('p', { class: 'climbs__sum' });
+    const add = el('button', { type: 'button', class: 'btn btn--quiet btn--sm climbs__add',
+      onclick: () => {
+        const last = rows[rows.length - 1];
+        rows.push({ grade: last ? last.grade : (CT.GRADE_DEFAULT[ladderName] || ladder[0]), count: 1 });
+        paint(rows.length - 1);
+      } }, [ icon('plus'), 'Add a grade' ]);
+
+    function paint(focusRow) {
+      CT.ui.clear(list);
+      rows.forEach((r, i) => {
+        const count = el('span', { class: 'climbs__n', text: String(r.count) });
+        const step = d => {
+          r.count = Math.max(1, Math.min(99, r.count + d));
+          count.textContent = String(r.count);
+          motion.pop(count, .7);
+          commit();
+        };
+        list.appendChild(el('div', { class: 'climbs__r' }, [
+          el('div', { class: 'stepper stepper--sm' }, [
+            el('button', { type: 'button', onclick: () => step(-1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
+            count,
+            el('button', { type: 'button', onclick: () => step(1), 'aria-label': 'One more' }, [ icon('plus') ])
+          ]),
+          el('span', { class: 'climbs__x', text: '×' }),
+          el('select', { class: 'input climbs__g', 'aria-label': 'Grade',
+            onchange: e => { r.grade = e.target.value; commit(); } },
+            ladder.map(g => el('option', { value: g, text: g, selected: g === r.grade || null }))),
+          el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove this grade',
+            onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
+        ]));
+      });
+      if (!rows.length) list.appendChild(el('p', { class: 'tiny climbs__none',
+        text: 'Nothing added yet — one row per grade you climbed.' }));
+      commit();
+      if (focusRow != null && motion.on) motion.pop(list.children[focusRow], .94);
+    }
+
+    function commit() {
+      const clean = rows.filter(r => r.count > 0).map(r => ({ grade: r.grade, count: r.count }));
+      const n = CT.climbs.total(clean);
+      const top = CT.climbs.hardest(clean, ladderName);
+      summary.textContent = !n ? 'No climbs logged yet'
+        : `${n} ${n === 1 ? 'climb' : 'climbs'}${top ? ' · hardest ' + top : ''}`;
+      set(clean);
+    }
+
+    paint();
+    return el('div', { class: 'climbs' }, [ list, el('div', { class: 'climbs__ft' }, [ add, summary ]) ]);
+  }
 
   /* ═══════════════ which kind of session? ═══════════════
      Nothing in the app opens a log without knowing what it is. */
@@ -49,8 +254,8 @@
      the day itself. Power Endurance is offered by the week the date
      falls in, not by the week the athlete is in today. */
   CT.views.planSlot = function (c, date) {
-    if (S.isCoach()) {
-      toast('Coaches don’t plan from here', `Switch to ${c.name} in the corner to add to their week.`);
+    if (!S.canLog()) {
+      toast(`This is ${c.name}’s plan`, 'Switch to your own training in the corner to add to your week.');
       return;
     }
     const peOpen = S.weekOf(c, date) >= c.block.peFromWeek;
@@ -258,31 +463,52 @@
 
       const prior = editing && editing.modality === modality ? editing.fields : null;
 
-      CT.FORMS[modality].forEach(([key, label, kind, def]) => {
-        const options = kind === 'select' ? String(def).split(',') : null;
-        values[key] = options ? options[Math.floor(options.length / 2)] : def;
-        if (prior && prior[key] !== undefined && prior[key] !== null) values[key] = prior[key];
-        const init = values[key];
+      /* Only a field the athlete had already answered is carried over —
+         an absent one falls back to the schema's default, and for the
+         optional grade "absent" is itself an answer. */
+      const held = k => prior && Object.prototype.hasOwnProperty.call(prior, k);
 
-        let control;
+      CT.FORMS[modality].forEach(([key, label, kind, def]) => {
+        const set = v => values[key] = v;
+        const options = kind === 'select' ? String(def).split(',') : null;
+        let init = options ? options[Math.floor(options.length / 2)] : def;
+        if (kind === 'climbs') init = [];
+        if (kind === 'grade') init = null;                  // absent unless it was answered
+        if (held(key) && prior[key] !== null) init = prior[key];
+
+        let control, wide = false;
         if (options) {
-          control = el('select', { class: 'input', onchange: e => values[key] = e.target.value },
+          set(init);
+          control = el('select', { class: 'input', onchange: e => set(e.target.value) },
             options.map(o => el('option', { value: o, text: o, selected: o === init || null })));
         } else if (kind === 'rpe') {
-          const out = el('span', { class: 'rpe__val', text: `${init} · ${RPE(init)}` });
-          const range = el('input', { type: 'range', min: 1, max: 10, step: 1, value: init,
-            oninput: e => { values[key] = +e.target.value; out.textContent = `${e.target.value} · ${RPE(+e.target.value)}`; } });
-          control = el('div', { class: 'rpe' }, [ range, out ]);
+          wide = true;
+          /* Stored alongside the number: which scale it is on. Without
+             it a 4 from before the change reads as "had to try hard"
+             when it meant something nearer the opposite. */
+          values[CT.RPE.key] = CT.RPE.max;
+          control = rpeControl(init, set);
+        } else if (kind === 'duration') {
+          control = durationControl(init, set);
+        } else if (kind === 'choice') {
+          wide = true;
+          control = choiceControl(def, init, set);
+        } else if (kind === 'grade') {
+          control = gradeControl(def, init, set);
+        } else if (kind === 'climbs') {
+          wide = true;
+          control = climbsControl(def, init, set);
         } else {
+          set(init);
           control = el('div', { class: 'row', style: 'gap:9px' }, [
             el('input', { class: 'input', type: 'number', value: init, min: 0, step: kind === 'kg' ? 0.5 : 1,
-              oninput: e => values[key] = +e.target.value }),
+              oninput: e => set(+e.target.value) }),
             UNIT[kind] ? el('span', { class: 'readout__u', style: 'flex:none', text: UNIT[kind] }) : null
           ]);
         }
 
-        grid.appendChild(el('div', { class: 'field' + (kind === 'rpe' ? ' span2' : '') }, [
-          el('label', { text: label + (kind === 'rpe' ? ' — RPE 1 to 10' : '') }),
+        grid.appendChild(el('div', { class: 'field' + (wide ? ' span2' : '') }, [
+          el('label', { text: label + (kind === 'rpe' ? ' — RPE 1 to 5' : '') }),
           control
         ]));
       });
