@@ -3,7 +3,7 @@
    Chart shapes are a first pass; the data contract is the point.
    ═══════════════════════════════════════════════════════════════ */
 (function () {
-  const CT = window.CT, { el, icon, motion } = CT.ui, S = CT.store, dt = CT.dt;
+  const CT = window.CT, { el, icon, motion, toast } = CT.ui, S = CT.store, dt = CT.dt;
 
   const GRIP_COLOR = { tfd: 'var(--spruce-mark)', half: 'var(--ember-mark)' };
   const GRIP_MARK  = { tfd: 'circle', half: 'square' };
@@ -113,34 +113,7 @@
     }));
 
     /* ── critical force ───────────────────────────────────── */
-    const cf = S.latestCF(c), prev = c.criticalForce[c.criticalForce.length - 2];
-    wrap.appendChild(el('section', { class: 'card' }, [
-      el('div', { class: 'card__hd' }, [
-        el('div', {}, [
-          el('h3', { class: 'h-card', text: 'Critical force' }),
-          el('p', { class: 'sub', style: 'margin-top:2px',
-            text: cf ? `7:3 repeaters to failure · tested ${dt.relative(cf.date)}`
-                     : '7:3 repeaters to failure' })
-        ]),
-        el('span', { class: 'card__act chip chip--ember', text: 'Mock data shape' })
-      ]),
-      cf
-        ? el('div', { class: 'card__bd' }, [
-            el('div', { class: 'cf' }, [
-              el('dl', { class: 'cf__stats' }, [
-                stat('Critical force', cf.cf.toFixed(1), 'kg', prev ? +(cf.cf - prev.cf).toFixed(1) : null),
-                stat('As % of max', String(cf.pct), '%', prev ? cf.pct - prev.pct : null),
-                stat('W′ (reserve)', String(cf.wPrime), 'kg·s', prev ? cf.wPrime - prev.wPrime : null)
-              ]),
-              el('div', { id: 'cfPlot' })
-            ]),
-            el('p', { class: 'tiny', style: 'margin-top:16px;line-height:1.5',
-              text: 'Force decays toward an asymptote across 24 repeaters. The asymptote is the critical force — the load the fingers can hold more or less indefinitely. Everything above it draws down W′.' })
-          ])
-        : el('div', { class: 'card__bd' }, [
-            empty('No critical force test yet', 'The first test sets the baseline everything else is read against.')
-          ])
-    ]));
+    wrap.appendChild(cfCard(c));
 
     /* ── session history ──────────────────────────────────── */
     const hist = S.history(c);
@@ -159,23 +132,214 @@
     ]));
 
     host.appendChild(wrap);
-    if (cf) CT.charts.cfCurve(CT.ui.$('#cfPlot', wrap), cf);
     motion.enter(wrap);
   };
 
-  function stat(label, value, unit, delta) {
+  /* ═══════════════════════════════════════════════════════════
+     Critical force.
+
+     The zones lead, because they are the only part of the test an
+     athlete can act on: a band of load to pull repeaters at. The
+     numbers behind them come second and the decay curve third,
+     which is the reverse of how the device presents it and the
+     right way round for whoever has to train off it.
+
+     Tested per grip, so grips never share an axis or a headline —
+     a half-crimp critical force says nothing about a drag.
+     ═══════════════════════════════════════════════════════════ */
+  function cfCard(c) {
+    const grips = S.cfGrips(c);
+    let grip = grips[0] || 'half';
+    let showing = null;                 // a specific test, or the latest
+
+    const head = el('div', { class: 'card__hd' });
+    const body = el('div', { class: 'card__bd' });
+    const card = el('section', { class: 'card' }, [ head, body ]);
+
+    const canUpload = S.isCoach();
+
+    function paint() {
+      const runs = CT.cf.series(c.criticalForce, grip);
+      const at = showing ? runs.findIndex(t => t.id === showing) : -1;
+      const idx = at >= 0 ? at : runs.length - 1;
+      const test = runs[idx] || null;
+      const prev = idx > 0 ? runs[idx - 1] : null;
+      const gripName = CT.cf.gripOf(grip).name;
+
+      CT.ui.clear(head);
+      head.appendChild(el('div', {}, [
+        el('h3', { class: 'h-card', text: 'Critical force' }),
+        el('p', { class: 'sub', style: 'margin-top:2px',
+          text: test ? `${gripName} · 7:3 repeaters to failure · tested ${dt.relative(test.date)}`
+                     : '7:3 repeaters to failure' })
+      ]));
+      head.appendChild(el('div', { class: 'card__act row', style: 'gap:9px' }, [
+        grips.length > 1 ? el('div', { class: 'seg' }, grips.map(g =>
+          el('button', { text: CT.cf.gripOf(g).short, 'aria-pressed': String(g === grip),
+            onclick: () => { grip = g; showing = null; paint(); } })
+        )) : null,
+        canUpload ? el('button', { class: 'btn btn--ghost btn--sm', onclick: () => CT.views.cfUpload(c) },
+          [ icon('plus'), 'Upload test' ]) : null
+      ]));
+
+      CT.ui.clear(body);
+      if (!test) {
+        body.appendChild(empty('No critical force test yet',
+          canUpload ? 'Upload the files off the device and the zones appear here.'
+                    : 'The first test sets the band everything else is read against.'));
+        return;
+      }
+
+      const hands = CT.cf.hands(test);
+      const bal = CT.cf.balance(test);
+
+      /* ── the zones, and what to do with them ── */
+      const zonePlot = el('div');
+      body.appendChild(el('div', { class: 'cfz' }, [
+        el('p', { class: 'eyebrow', text: 'Repeaters — what to pull at' }),
+        zonePlot,
+        el('div', { class: 'cfz__rows' }, hands.map(h => {
+          const S_ = CT.charts.HAND[h.hand];
+          return el('div', { class: 'cfz__row' }, [
+            el('span', { class: 'cfz__dot', style: 'background:' + S_.color }),
+            el('p', { class: 'cfz__txt', html:
+              `<b>${S_.label} hand</b> — build capacity at <b>${h.zone[0].toFixed(1)}–${h.zone[1].toFixed(1)} kg</b>. ` +
+              `Under ${h.zone[0].toFixed(1)} kg is easy aerobic work you could hold all session; ` +
+              `above ${h.zone[1].toFixed(1)} kg you're spending reserve rather than building it.` })
+          ]);
+        }))
+      ]));
+
+      /* ── the numbers ── */
+      const bw = test.bodyweight;
+      body.appendChild(el('dl', { class: 'cfstats' }, hands.map(h => {
+        const S_ = CT.charts.HAND[h.hand];
+        const was = prev && prev.hands[h.hand];
+        const pct = CT.cf.pctBw(h, bw);
+        return el('div', { class: 'cfstat' }, [
+          el('dt', {}, [ el('i', { class: 'cfstat__dot', style: 'background:' + S_.color }), S_.label + ' hand' ]),
+          el('dd', {}, [
+            el('div', { class: 'readout' }, [
+              counter(h.cf, 1), el('span', { class: 'readout__u', text: 'kg' })
+            ]),
+            el('p', { class: 'tiny', style: 'margin-top:3px',
+              text: pct != null ? pct + '% of bodyweight' : 'bodyweight not recorded' }),
+            was ? el('span', { class: 'delta ' + (h.cf >= was.cf ? 'delta--down' : 'delta--up'),
+              style: 'margin-top:5px;display:block',
+              text: (h.cf > was.cf ? '+' : '') + (h.cf - was.cf).toFixed(1) + ' kg since ' + dt.mini(prev.date) }) : null
+          ])
+        ]);
+      }).concat(bal ? [
+        el('div', { class: 'cfstat' }, [
+          el('dt', { text: 'Between hands' }),
+          el('dd', {}, [
+            el('div', { class: 'readout' }, [
+              counter(bal.pct, 0), el('span', { class: 'readout__u', text: '%' })
+            ]),
+            el('p', { class: 'tiny', style: 'margin-top:3px',
+              text: bal.pct === 0 ? 'evenly matched'
+                : `${bal.weak} is ${bal.gap.toFixed(1)} kg behind` })
+          ])
+        ])
+      ] : [])));
+
+      /* ── the curve it was read off ── */
+      const curvePlot = el('div');
+      body.appendChild(el('div', { class: 'cfsec' }, [
+        el('p', { class: 'eyebrow', text: 'How the force fell away' }),
+        curvePlot,
+        el('div', { class: 'legend', style: 'margin-top:12px' }, hands.map(h => {
+          const S_ = CT.charts.HAND[h.hand];
+          return el('span', {}, [
+            el('i', { class: S_.dash ? 'dash' : '', style: `color:${S_.color};background:${S_.color}` }),
+            `${S_.label} — ${S_.dash ? 'dashed, square markers' : 'solid, round markers'}`
+          ]);
+        }).concat([
+          el('span', {}, [ el('i', { style: 'background:none;border:1.4px solid var(--ink-3);height:8px;width:8px;border-radius:50%' }),
+            'Hollow marker — too few samples for the device to trust the rep' ])
+        ])),
+        el('p', { class: 'tiny', style: 'margin-top:12px;line-height:1.55', text:
+          `Force decays toward an asymptote across ${hands[0].reps.length} repeaters. That asymptote is the critical ` +
+          `force — the load the fingers can hold more or less indefinitely — and it's averaged from the last ` +
+          `${CT.cf.CF_WINDOW} reps, shaded above.` })
+      ]));
+
+      /* ── what the device wasn't sure about ── */
+      const caveats = CT.cf.caveats(test);
+      if (caveats.length) {
+        body.appendChild(el('div', { class: 'cfsec' }, [
+          el('p', { class: 'eyebrow', text: 'Worth knowing about this test' }),
+          el('div', { class: 'stack', style: 'gap:8px' }, caveats.map(cv =>
+            el('p', { class: 'cfup__note cfup__note--' + cv.tone }, [
+              icon('info', 'cfup__ni'), el('span', { text: cv.text })
+            ])
+          ))
+        ]));
+      }
+
+      /* ── across tests, once there is more than one ── */
+      if (runs.length > 1) {
+        const trendPlot = el('div');
+        body.appendChild(el('div', { class: 'cfsec' }, [
+          el('p', { class: 'eyebrow', text: 'Across tests' }),
+          trendPlot
+        ]));
+        requestAnimationFrame(() => CT.charts.line(trendPlot, {
+          height: 200, unit: ' kg', decimals: 1, directLabel: true,
+          series: CT.cf.HANDS.filter(h => runs.some(t => t.hands[h])).map(h => ({
+            id: h, name: CT.charts.HAND[h].label, color: CT.charts.HAND[h].color,
+            marker: CT.charts.HAND[h].marker, dash: CT.charts.HAND[h].dash,
+            points: runs.filter(t => t.hands[h]).map(t => ({ x: t.date, y: t.hands[h].cf }))
+          }))
+        }));
+      }
+
+      /* ── every test on record, and the way out of a bad upload ──
+         Coach-side. The athlete's screen shows the latest and the
+         trend, which is what training off it needs; picking through
+         old tests and deleting them is the coach's job. */
+      if (canUpload) {
+        body.appendChild(el('div', { class: 'cfsec' }, [
+          el('p', { class: 'eyebrow', text: runs.length > 1 ? 'Tests on record' : 'This test' }),
+          el('div', { class: 'cflist' }, runs.slice().reverse().map(t => {
+            const on = t.id === test.id;
+            const files = Object.values(t.source || {}).length;
+            return el('div', { class: 'cflist__r' + (on ? ' is-on' : '') }, [
+              el('button', { class: 'cflist__pick', 'aria-pressed': String(on),
+                onclick: () => { showing = t.id; paint(); } }, [
+                el('div', {}, [
+                  el('p', { class: 'cflist__d', text: dt.short(t.date) }),
+                  el('p', { class: 'tiny', text: CT.cf.hands(t).map(h =>
+                    CT.charts.HAND[h.hand].label.toLowerCase() + ' ' + h.cf.toFixed(1) + ' kg').join(' · ') +
+                    ` · ${files} file${files === 1 ? '' : 's'}` })
+                ]),
+                on ? el('span', { class: 'chip chip--spruce', text: 'Showing' }) : null
+              ]),
+              on ? CT.deleteButton(() => {
+                S.deleteCFTest(c, t.id);
+                showing = null;
+                CT.render(false);
+                toast('Test removed', 'Nothing else on the record changes.');
+              }, 'Remove') : null
+            ]);
+          }))
+        ]));
+      }
+
+      CT.charts.cfZones(zonePlot, test);
+      CT.charts.cfCurve(curvePlot, test);
+    }
+
+    paint();
+    return card;
+  }
+
+  /* a number that counts up to itself, the way every other readout
+     in the app does */
+  function counter(value, decimals) {
     const n = el('span', { class: 'readout__n', style: 'font-size:28px', text: '0' });
-    requestAnimationFrame(() => motion.count(n, 0, parseFloat(value), { decimals: value.includes('.') ? 1 : 0 }));
-    return el('div', { class: 'cf__stat' }, [
-      el('dt', { text: label }),
-      el('dd', {}, [
-        el('div', { class: 'readout' }, [ n, el('span', { class: 'readout__u', text: unit }) ]),
-        delta !== null && delta !== undefined
-          ? el('span', { class: 'delta ' + (delta >= 0 ? 'delta--down' : 'delta--up'), style: 'margin-top:4px;display:block',
-              text: (delta > 0 ? '+' : '') + delta + ' since last test' })
-          : null
-      ])
-    ]);
+    requestAnimationFrame(() => motion.count(n, 0, value, { decimals }));
+    return n;
   }
 
   function table(heads, rows) {

@@ -7,3 +7,8 @@ Thumbs.db
 
 # firebase deploy artifacts
 .firebase/
+
+# Critical-force exports waiting to be uploaded. Real athletes'
+# bodyweight and finger strength — kept out of git history, and out
+# of a deploy too (see the hosting ignore list in firebase.json).
+criticalforce/

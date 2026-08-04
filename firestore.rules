@@ -216,8 +216,23 @@ service cloud.firestore {
         allow read, write: if isMember(aid);
       }
 
+      /* Critical force is the one thing on an athlete's record they
+         cannot put there themselves. It is not logged from memory
+         like a session — it is a file off a load cell the coach owns,
+         read on the coach's screen. So the athlete reads it and the
+         coach writes it, and an athlete who wanted to flatter their
+         own numbers has nowhere to type them.
+
+         Date and grip are required because both are join keys: the
+         card groups by grip and orders by date, and a test missing
+         either is a test no screen can place. */
       match /criticalForce/{testId} {
-        allow read, write: if isMember(aid);
+        allow read: if isMember(aid);
+        allow create, update: if isMember(aid)
+          && uid() == athleteDoc(aid).coachId
+          && request.resource.data.date is string
+          && request.resource.data.grip is string;
+        allow delete: if isMember(aid) && uid() == athleteDoc(aid).coachId;
       }
     }
 

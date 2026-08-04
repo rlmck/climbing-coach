@@ -431,6 +431,23 @@
     push(F().deleteDoc(ref(c.id, 'bodyweight', iso)), 'that deletion');
   };
 
+  /* A critical-force test carries its raw per-rep traces, which is
+     the bulk of it — around 40 KB for two hands, against a 1 MiB
+     document limit. Kept whole rather than split, because the trace
+     is the only record of how a rep was actually pulled and a test
+     is read as one thing. */
+  repo.saveCFTest = function (c, test) {
+    if (!repo.enabled) return;
+    const body = clean(Object.assign({}, test));
+    delete body.id;
+    push(F().setDoc(ref(c.id, 'criticalForce', test.id), body), 'that test');
+  };
+
+  repo.deleteCFTest = function (c, id) {
+    if (!repo.enabled) return;
+    push(F().deleteDoc(ref(c.id, 'criticalForce', id)), 'that deletion');
+  };
+
   /* Only the fields a coach or athlete can actually change. members,
      coachId and clientUid are settled elsewhere and the rules refuse
      them here anyway. */

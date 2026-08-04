@@ -380,7 +380,37 @@
       const ref = b[Math.max(0, b.length-5)];
       return { latest, delta: +(latest - ref.kg).toFixed(1), since: ref.date };
     },
-    latestMaxHang(c) { return c.maxHang[c.maxHang.length-1] || null; },
-    latestCF(c) { return c.criticalForce[c.criticalForce.length-1] || null; }
+    /* ── critical force ──────────────────────────────────────
+       Uploaded rather than logged, and always by the coach — the
+       device is theirs. A test is keyed by date and grip, so
+       re-uploading the same files corrects the record instead of
+       doubling it. */
+    saveCFTest(c, test) {
+      const id = test.id || CT.repo.newId(c.id, 'criticalForce');
+      const rec = Object.assign({}, test, { id });
+      const at = c.criticalForce.findIndex(t => t.id === id ||
+        (t.date === rec.date && t.grip === rec.grip));
+      if (at >= 0) c.criticalForce[at] = rec; else c.criticalForce.push(rec);
+      c.criticalForce.sort((a,b) => a.date < b.date ? -1 : 1);
+      CT.repo.saveCFTest(c, rec);
+      return rec;
+    },
+
+    deleteCFTest(c, id) {
+      const at = c.criticalForce.findIndex(t => t.id === id);
+      if (at < 0) return;
+      c.criticalForce.splice(at, 1);
+      CT.repo.deleteCFTest(c, id);
+    },
+
+    /* Grips that have ever been tested, newest test first — the app's
+       own pair isn't the authority here, the data is. */
+    cfGrips(c) {
+      const seen = [];
+      c.criticalForce.slice().reverse().forEach(t => { if (!seen.includes(t.grip)) seen.push(t.grip); });
+      return seen;
+    },
+
+    latestMaxHang(c) { return c.maxHang[c.maxHang.length-1] || null; }
   };
 })();

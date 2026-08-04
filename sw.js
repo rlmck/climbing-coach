@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v7';
+const CACHE = 'coach-v8';
 
 const SHELL = [
   './',
@@ -25,6 +25,7 @@ const SHELL = [
   './vendor/Flip.min.js',
   './js/config.js',
   './js/firebase.js',
+  './js/cftest.js',
   './js/data.js',
   './js/store.js',
   './js/repo.js',
@@ -39,6 +40,7 @@ const SHELL = [
   './js/logs/strength.js',
   './js/logs/session.js',
   './js/logs/onboard.js',
+  './js/logs/cfupload.js',
   './js/app.js'
 ];
 

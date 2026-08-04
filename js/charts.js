@@ -137,54 +137,176 @@
     }).observe(host);
   }
 
-  /* ── critical-force decay curve (single series + asymptote) ── */
+  /* ── hands, drawn the way grips are ─────────────────────────
+     Same two validated marks as everywhere else, same secondary
+     encoding: solid/round against dashed/square, so the pair never
+     depends on colour alone. */
+  const HAND = {
+    right: { color: 'var(--spruce-mark)', marker: 'circle', dash: false, label: 'Right' },
+    left:  { color: 'var(--ember-mark)',  marker: 'square', dash: true,  label: 'Left'  }
+  };
+
+  /* ── critical-force decay curve ─────────────────────────────
+     One trace per hand across 24 repeaters, each with its own
+     asymptote. Two things the device knows and a plain line chart
+     would hide are drawn explicitly: reps it flagged as unreliable
+     get hollow markers, and reps with no usable reading break the
+     line rather than dropping it to the floor. The band over the
+     closing reps is where the critical force was actually read. */
   function cfCurve(host, test) {
+    const hands = CT.cf.hands(test);
     const draw = () => {
-      const W = Math.max(280, host.clientWidth || 460), H = 168;
-      const m = { t: 14, r: 58, b: 24, l: 34 };
+      const W = Math.max(280, host.clientWidth || 460), H = 236;
+      const narrow = W < 430;
+      const m = { t: 16, r: narrow ? 14 : 66, b: 26, l: 36 };
       const iw = W - m.l - m.r, ih = H - m.t - m.b;
-      const ys = test.curve;
-      const { lo, hi, step } = nice(Math.min(test.cf, ...ys) * 0.9, Math.max(...ys) * 1.04);
-      const X = i => m.l + i / (ys.length - 1) * iw;
+
+      const n = Math.max(...hands.map(h => h.reps.length), 2);
+      const live = hands.flatMap(h => h.reps.filter(r => r.avg > 0).map(r => r.avg));
+      const cfs  = hands.map(h => h.cf);
+      const { lo, hi, step } = nice(Math.min(...cfs, ...live) * 0.9, Math.max(...live) * 1.04);
+      const X = i => m.l + i / (n - 1) * iw;
       const Y = v => m.t + ih - (v - lo) / (hi - lo) * ih;
 
       const svg = svgEl('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+
+      /* the reps the critical force is averaged from */
+      const win = hands[0] ? hands[0].window : [];
+      if (win.length) {
+        const a = X(Math.min(...win) - 1), b = X(Math.max(...win) - 1);
+        svg.appendChild(svgEl('rect', { x: a - 5, y: m.t, width: (b - a) + 10, height: ih,
+          fill: 'var(--surface-3)', opacity: .75, rx: 3 }));
+        const t = svgEl('text', { class: 'axis-t', x: (a + b) / 2, y: m.t + 11, 'text-anchor': 'middle' });
+        t.textContent = narrow ? 'CF' : 'critical force read here'; svg.appendChild(t);
+      }
+
       for (let v = lo; v <= hi + 1e-9; v += step) {
         svg.appendChild(svgEl('line', { class: 'grid-line', x1: m.l, x2: m.l + iw, y1: Y(v), y2: Y(v) }));
         const t = svgEl('text', { class: 'axis-t', x: m.l - 7, y: Y(v) + 3.5, 'text-anchor': 'end' });
         t.textContent = (+v.toFixed(0)).toString(); svg.appendChild(t);
       }
-      [1, 12, 24].forEach((r, i) => {
-        const t = svgEl('text', { class: 'axis-t', x: X(r - 1), y: H - 6,
+      [1, 12, n].forEach((r, i) => {
+        const t = svgEl('text', { class: 'axis-t', x: X(r - 1), y: H - 7,
           'text-anchor': i === 0 ? 'start' : i === 2 ? 'end' : 'middle' });
         t.textContent = 'rep ' + r; svg.appendChild(t);
       });
 
-      /* bars — mean force per repeater */
-      ys.forEach((v, i) => {
-        const w = Math.max(3, iw / ys.length - 3);
-        svg.appendChild(svgEl('rect', {
-          x: X(i) - w / 2, y: Y(v), width: w, height: Math.max(1, m.t + ih - Y(v)),
-          rx: 2, fill: 'var(--surface-3)'
-        }));
+      const paths = [];
+      hands.forEach(h => {
+        const S = HAND[h.hand] || HAND.right;
+
+        /* asymptote, drawn under the trace it belongs to */
+        const cfY = Y(h.cf);
+        svg.appendChild(svgEl('line', { x1: m.l, x2: m.l + iw, y1: cfY, y2: cfY,
+          stroke: S.color, 'stroke-width': 1.5, 'stroke-dasharray': '2 5',
+          'stroke-linecap': 'round', opacity: .55 }));
+        if (narrow) {
+          const lab = svgEl('text', { class: 'lbl', x: m.l + 4, y: cfY - 5, fill: S.color });
+          lab.textContent = S.label + ' ' + h.cf.toFixed(1) + ' kg'; svg.appendChild(lab);
+        } else {
+          const lab = svgEl('text', { class: 'lbl', x: m.l + iw + 9, y: cfY + 4, fill: S.color });
+          lab.textContent = h.cf.toFixed(1) + ' kg'; svg.appendChild(lab);
+          const sub = svgEl('text', { class: 'axis-t', x: m.l + iw + 9, y: cfY + 16 });
+          sub.textContent = S.label.toLowerCase() + ' CF'; svg.appendChild(sub);
+        }
+
+        /* the trace, broken wherever a rep recorded nothing */
+        let d = '', pen = false;
+        h.reps.forEach((r, i) => {
+          if (r.avg <= 0) { pen = false; return; }
+          d += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(r.avg).toFixed(1) + ' ';
+          pen = true;
+        });
+        const path = svgEl('path', { class: 'series', d: d.trim(), stroke: S.color });
+        if (S.dash) path.setAttribute('stroke-dasharray', '5 4');
+        svg.appendChild(path); paths.push(path);
+
+        /* markers — hollow wherever the device didn't trust the rep */
+        h.reps.forEach((r, i) => {
+          if (r.avg <= 0) return;
+          const x = X(i), y = Y(r.avg), sz = 3.1;
+          const fill = r.unreliable ? 'var(--surface)' : S.color;
+          const node = S.marker === 'square'
+            ? svgEl('rect', { class: 'dot', x: x - sz, y: y - sz, width: sz * 2, height: sz * 2, rx: 1, fill })
+            : svgEl('circle', { class: 'dot', cx: x, cy: y, r: sz, fill });
+          if (r.unreliable) { node.setAttribute('stroke', S.color); node.setAttribute('stroke-width', 1.4); }
+          svg.appendChild(node);
+        });
+
+        /* a rep that recorded nothing is marked as absent, not as zero */
+        h.reps.forEach((r, i) => {
+          if (r.avg > 0) return;
+          svg.appendChild(svgEl('line', { x1: X(i), x2: X(i), y1: m.t + 16, y2: m.t + ih,
+            stroke: S.color, 'stroke-width': 1, 'stroke-dasharray': '1 4', opacity: .5 }));
+        });
       });
 
-      /* critical force asymptote */
-      const cfY = Y(test.cf);
-      svg.appendChild(svgEl('line', { x1: m.l, x2: m.l + iw, y1: cfY, y2: cfY,
-        stroke: 'var(--ember-mark)', 'stroke-width': 2, 'stroke-dasharray': '6 4', 'stroke-linecap': 'round' }));
-      const lab = svgEl('text', { class: 'lbl', x: m.l + iw + 9, y: cfY + 4, fill: 'var(--ember-mark)' });
-      lab.textContent = test.cf.toFixed(1) + ' kg'; svg.appendChild(lab);
-      const sub = svgEl('text', { class: 'axis-t', x: m.l + iw + 9, y: cfY + 16 });
-      sub.textContent = 'critical force'; svg.appendChild(sub);
+      CT.ui.clear(host); host.appendChild(svg);
+      paths.forEach((p, i) => motion.draw(p, i * 0.12));
+    };
+    mount(host, draw);
+    return host;
+  }
 
-      /* decay trace */
-      const d = ys.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ');
-      const path = svgEl('path', { class: 'series', d, stroke: 'var(--spruce-mark)' });
-      svg.appendChild(path);
+  /* ── training zones ─────────────────────────────────────────
+     What the test is actually for. Both hands share one axis, so
+     the gap between them is the first thing you see rather than
+     something you work out from two numbers. */
+  function cfZones(host, test) {
+    const hands = CT.cf.hands(test);
+    const draw = () => {
+      const W = Math.max(280, host.clientWidth || 460);
+      const narrow = W < 430;
+      const rowH = 52, H = hands.length * rowH + 34;
+      const m = { t: 8, r: narrow ? 14 : 62, b: 26, l: narrow ? 34 : 44 };
+      const iw = W - m.l - m.r;
+
+      const top = Math.max(...hands.map(h => h.cf)) * 1.28;
+      const X = v => m.l + Math.max(0, Math.min(1, v / top)) * iw;
+
+      const svg = svgEl('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+
+      /* axis in whole kilos, coarse enough not to crowd a phone */
+      const stepKg = top > 40 ? 10 : 5;
+      for (let v = 0; v <= top; v += stepKg) {
+        svg.appendChild(svgEl('line', { class: 'grid-line', x1: X(v), x2: X(v), y1: m.t, y2: m.t + hands.length * rowH }));
+        const t = svgEl('text', { class: 'axis-t', x: X(v), y: H - 8, 'text-anchor': 'middle' });
+        t.textContent = String(v); svg.appendChild(t);
+      }
+      const unit = svgEl('text', { class: 'axis-t', x: m.l + iw, y: H - 8, 'text-anchor': 'end' });
+      unit.textContent = 'kg'; svg.appendChild(unit);
+
+      const bars = [];
+      hands.forEach((h, i) => {
+        const S = HAND[h.hand] || HAND.right;
+        const y = m.t + i * rowH + 12, bh = 20;
+
+        const name = svgEl('text', { class: 'axis-t', x: m.l - 8, y: y + bh / 2 + 3.5, 'text-anchor': 'end' });
+        name.textContent = narrow ? S.label[0] : S.label; svg.appendChild(name);
+
+        /* aerobic — everything the hand can hold more or less forever */
+        const aer = svgEl('rect', { x: m.l, y, width: 1, height: bh, rx: 3, fill: S.color, opacity: .16 });
+        svg.appendChild(aer); bars.push([aer, X(h.zone[0]) - m.l]);
+
+        /* threshold — the band the test exists to find */
+        const thr = svgEl('rect', { x: X(h.zone[0]), y, width: 1, height: bh, rx: 3, fill: S.color, opacity: .52 });
+        svg.appendChild(thr); bars.push([thr, X(h.zone[1]) - X(h.zone[0])]);
+
+        /* the critical force itself */
+        svg.appendChild(svgEl('line', { x1: X(h.cf), x2: X(h.cf), y1: y - 5, y2: y + bh + 5,
+          stroke: S.color, 'stroke-width': 2.25, 'stroke-linecap': 'round' }));
+
+        const lab = svgEl('text', { class: 'lbl',
+          x: narrow ? X(h.cf) - 6 : X(h.cf) + 9, y: y + bh / 2 + 4, fill: S.color,
+          'text-anchor': narrow ? 'end' : 'start' });
+        lab.textContent = h.cf.toFixed(1) + (narrow ? '' : ' kg'); svg.appendChild(lab);
+      });
 
       CT.ui.clear(host); host.appendChild(svg);
-      motion.draw(path);
+      bars.forEach(([node, w]) => {
+        if (!CT.ui.ON) { node.setAttribute('width', Math.max(1, w)); return; }
+        window.gsap.to(node, { attr: { width: Math.max(1, w) }, duration: .7, ease: 'power3.out' });
+      });
     };
     mount(host, draw);
     return host;
@@ -203,5 +325,5 @@
     return svg;
   }
 
-  CT.charts = { line, cfCurve, spark };
+  CT.charts = { line, cfCurve, cfZones, spark, HAND };
 })();

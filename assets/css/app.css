@@ -677,10 +677,79 @@ input[type=range]::-moz-range-thumb{
 .legend i{ width:14px; height:2px; border-radius:1px; display:block; flex:none; }
 .legend i.dash{ background:none !important; border-top:2px dashed currentColor; height:0; }
 
-.cf{ display:grid; grid-template-columns:200px 1fr; gap:26px; align-items:center; }
-.cf__stats{ display:flex; flex-direction:column; gap:16px; }
-.cf__stat dt{ font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-4); }
-.cf__stat dd{ margin:4px 0 0; }
+/* ── critical force ────────────────────────────────────────
+   Zones first, because they are the only part an athlete can
+   train off. Everything below them is evidence for the band. */
+.cfz{ display:flex; flex-direction:column; gap:12px; }
+.cfz__rows{ display:flex; flex-direction:column; gap:9px; }
+.cfz__row{ display:flex; gap:10px; align-items:flex-start; }
+.cfz__dot{ width:9px; height:9px; border-radius:50%; flex:none; margin-top:5px; }
+.cfz__txt{ font-size:13.5px; line-height:1.55; color:var(--ink-2); }
+.cfz__txt b{ color:var(--ink); font-weight:600; }
+
+.cfstats{
+  margin:22px 0 0; padding:18px 0 0; border-top:1px solid var(--line);
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(148px, 1fr)); gap:20px 26px;
+}
+.cfstat dt{
+  font-family:var(--mono); font-size:10px; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--ink-4); display:flex; align-items:center; gap:6px;
+}
+.cfstat__dot{ width:8px; height:8px; border-radius:50%; display:block; flex:none; }
+.cfstat dd{ margin:7px 0 0; }
+
+.cfsec{ margin-top:24px; padding-top:20px; border-top:1px solid var(--line); }
+.cfsec .eyebrow{ margin-bottom:12px; }
+.cflist{ display:flex; flex-direction:column; gap:8px; }
+.cflist__r{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--line); border-radius:var(--r-sm); padding:4px 10px 4px 4px;
+}
+.cflist__r.is-on{ border-color:var(--line-2); background:var(--surface-2); }
+.cflist__pick{
+  flex:1; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  background:none; border:0; font:inherit; color:inherit; text-align:left;
+  padding:8px 10px; border-radius:var(--r-xs); cursor:pointer;
+}
+.cflist__pick:hover{ background:var(--surface-3); }
+.cflist__d{ font-size:13.5px; font-weight:600; letter-spacing:-.015em; }
+
+/* ── the coach's upload sheet ─────────────────────────────── */
+.drop{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  padding:26px 20px; width:100%; text-align:center; cursor:pointer;
+  background:var(--surface-2); border:1.5px dashed var(--line-2); border-radius:var(--r-md);
+  color:var(--ink-2); font:inherit; transition:border-color .16s, background .16s;
+}
+.drop:hover, .drop.is-over{ border-color:var(--spruce); background:var(--spruce-tint); }
+.drop__i{ width:19px; height:19px; color:var(--ink-3); }
+.drop__t{ font-size:14.5px; font-weight:600; color:var(--ink); }
+.drop__d{ font-size:12.5px; color:var(--ink-3); }
+
+.cfup{
+  border:1px solid var(--line); border-radius:var(--r-md); padding:15px 16px;
+  display:flex; flex-direction:column; gap:13px; background:var(--surface);
+}
+.cfup--bad{ background:var(--surface-2); }
+.cfup__hd{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.cfup__t{ font-size:15px; font-weight:600; letter-spacing:-.018em; margin:5px 0 2px; }
+.cfup__hands{ display:flex; gap:22px; flex-wrap:wrap; }
+.cfup__hand{ display:flex; gap:9px; align-items:flex-start; }
+.cfup__dot{ width:9px; height:9px; border-radius:50%; flex:none; margin-top:5px; }
+.cfup__hn{
+  font-family:var(--mono); font-size:10px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--ink-4);
+}
+.cfup__hv{ font-size:19px; font-weight:600; letter-spacing:-.03em; font-variant-numeric:tabular-nums; }
+.cfup__fields{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+.cfup__note{
+  display:flex; gap:8px; align-items:flex-start;
+  font-size:12.5px; line-height:1.5; padding:9px 11px; border-radius:var(--r-sm);
+}
+.cfup__note--warn{ background:var(--ember-tint); color:var(--ember-ink); }
+.cfup__note--info{ background:var(--surface-3); color:var(--ink-2); }
+.cfup__ni{ width:14px; height:14px; flex:none; margin-top:2px; }
 
 .table{ width:100%; border-collapse:collapse; font-size:13.5px; }
 .table th{
@@ -925,7 +994,6 @@ input[type=range]::-moz-range-thumb{
 
 @media (max-width: 1080px){
   .tiles{ grid-template-columns:1fr; }
-  .cf{ grid-template-columns:1fr; gap:18px; }
   .grip__body{ flex-direction:column; align-items:stretch; gap:16px; }
   .load{ min-width:0; }
 }
@@ -1068,6 +1136,10 @@ input[type=range]::-moz-range-thumb{
   .load__n{ font-size:34px; }
   .rep__lbl{ font-size:9px; }
   .tab span{ font-size:9.5px; }
+  /* a date and a grip picker side by side is two cramped controls */
+  .cfup__fields{ grid-template-columns:1fr; }
+  .cfup__hands{ gap:16px; }
+  .cflist__r{ flex-direction:column; align-items:stretch; gap:6px; padding:4px; }
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -143,6 +143,87 @@
 
   const initialsOf = name => name.trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '?';
 
+  /* ── a critical-force export, as the device would write one ──
+     Force decays from an opening pull toward an asymptote across
+     24 repeaters, and the device averages the closing three into a
+     critical force. Sampling is the honest part: a hand that slips
+     early gives the device two readings to average instead of
+     twelve, and it says so — which the charts have to survive. */
+  function deviceFile(rand, o) {
+    const HANG_MS = 7000, REPS = 24;
+    const opening = o.asymptote * 2.2;
+
+    const allReps = [], unreliableReps = [];
+    for (let r = 1; r <= REPS; r++) {
+      const target = o.asymptote + (opening - o.asymptote) * Math.exp(-(r - 1) / 5.2)
+                   + (rand() - 0.5) * o.noise;
+
+      /* nothing usable came off the cell for this rep */
+      if (r === o.dropRep) {
+        allReps.push({ rep: r, average: 0, minimum: 0, peak: +(target * 1.1).toFixed(2),
+          unreliable: true, rawReadings: [{ t: 2400, force: +(target * 1.1).toFixed(2) }],
+          rawCount: 3, windowedReadings: 0, filteredReadings: 0 });
+        unreliableReps.push(r);
+        continue;
+      }
+
+      /* A flagged rep inside the closing three is the caveat the card
+         exists to raise, so it is authored rather than left to the
+         dice — otherwise every test trips it and the warning stops
+         meaning anything. */
+      const inWindow = r > REPS - 3;
+      const shaky = (o.forceFlag || []).includes(r) ? true
+                  : (o.cleanWindow && inWindow) ? false
+                  : rand() < o.flaky;
+      const kept = shaky ? 1 + Math.floor(rand() * 2) : 4 + Math.floor(rand() * 12);
+      const readings = [];
+      /* the rise onto the hold, then the hold itself */
+      for (let i = 0; i < kept + 2; i++) {
+        const t = Math.round(1000 + (i / (kept + 1)) * (HANG_MS - 1200));
+        const ramp = i === 0 ? 0.42 : i === 1 ? 0.88 : 1;
+        readings.push({ t, force: +(target * ramp + (rand() - 0.5) * o.noise * 1.6).toFixed(2) });
+      }
+      const held = readings.slice(2).map(p => p.force);
+      const average = +(held.reduce((a, v) => a + v, 0) / held.length).toFixed(2);
+
+      allReps.push({
+        rep: r, average,
+        minimum: +Math.min(...held).toFixed(2),
+        peak: +Math.max(...readings.map(p => p.force)).toFixed(2),
+        unreliable: shaky,
+        rawReadings: readings,
+        rawCount: readings.length + (shaky ? 4 : 1),
+        windowedReadings: kept, filteredReadings: kept
+      });
+      if (shaky) unreliableReps.push(r);
+    }
+
+    const cfRepValues = allReps.slice(-3).map(r => r.average);
+    const criticalForce = cfRepValues.reduce((a, v) => a + v, 0) / cfRepValues.length;
+
+    return {
+      timestamp: new Date(o.date + 'T18:03:26.035Z').toISOString(),
+      bodyweight: o.bw,
+      hand: o.hand,
+      criticalForce,
+      cfMin: allReps[REPS - 1].minimum,
+      cfRatio: criticalForce / o.bw,
+      arcZone: criticalForce * 0.8,
+      thresholdZone: (criticalForce * 0.8).toFixed(1) + ' - ' + criticalForce.toFixed(1) + ' kg',
+      cfRepValues, unreliableReps, allReps
+    };
+  }
+
+  /* What actually goes on the record. The athlete name and the grip
+     guess are upload-time scaffolding — they exist to be confirmed,
+     not to be kept. */
+  function storedTests(tests) {
+    return tests.map(t => ({
+      id: uid('cf'), date: t.date, grip: t.grip,
+      bodyweight: t.bodyweight, hands: t.hands, source: t.source
+    }));
+  }
+
   function makeClient(cfg) {
     const rand = rng(cfg.seed);
     const blockStart = dt.iso(dt.add(thisMonday, -7 * (cfg.currentWeek - 1)));
@@ -237,25 +318,30 @@
       });
     }
 
-    /* ── critical force tests (7:3 repeaters to failure) ── */
-    const criticalForce = [-1, 0].map((k, idx) => {
+    /* ── critical force tests (7:3 repeaters to failure) ──
+       Built as the device's own export and then read back through
+       CT.cf.parse, so the mock world exercises exactly the code an
+       uploaded file does — including the two things the real files
+       turned out to be full of: reps with too few samples to trust,
+       and the occasional rep that recorded nothing at all. */
+    const criticalForce = storedTests(CT.cf.group([-1, 0].flatMap((k, idx) => {
       const d = dt.iso(dt.add(thisMonday, -7 * (idx === 0 ? cfg.currentWeek + 7 : cfg.currentWeek - 1)));
-      const mvc = cfg.mvc + idx * cfg.mvcGain;
-      const cf  = +(mvc * (cfg.cfPct + idx * 0.018)).toFixed(1);
-      const curve = [];
-      for (let r = 1; r <= 24; r++) {
-        const decay = Math.exp(-r / 5.2);
-        curve.push(+(cf + (mvc * 0.92 - cf) * decay + (rand()-0.5) * 0.9).toFixed(1));
-      }
-      return {
-        date: d > todayISO ? todayISO : d,
-        mvc: +mvc.toFixed(1),
-        cf,
-        pct: Math.round(cf / mvc * 100),
-        wPrime: Math.round(curve.reduce((a,v) => a + Math.max(0, v - cf) * 7, 0)),
-        curve
-      };
-    });
+      const date = d > todayISO ? todayISO : d;
+      const bw = +(cfg.bw + cfg.bwTrend * (idx === 0 ? 8 : 1)).toFixed(1);
+      return ['right', 'left'].map((hand, hi) => CT.cf.parse(
+        `${cfg.name}_half_crimp_${hand}_cf-test-${date}T18-0${hi * 3}-00.json`,
+        deviceFile(rand, {
+          date, hand, bw,
+          asymptote: cfg.cf[hand] + idx * cfg.cf.gain,
+          /* the first test was scrappier — a coach learning the kit */
+          noise: idx === 0 ? 1.0 : 0.7,
+          flaky: idx === 0 ? 0.28 : 0.1,
+          dropRep: idx === 0 && hand === 'right' ? 16 : 0,
+          cleanWindow: idx === 1,
+          forceFlag: idx === 1 ? (cfg.cf.latestFlag || {})[hand] : null
+        })
+      ));
+    })));
 
     return {
       id: cfg.id, name: cfg.name, full: cfg.full, initials: cfg.initials, role: 'client',
@@ -348,7 +434,10 @@
           { tfd:'111', half:'110' }    // wk7  drag at 1/2, crimp reset  ← today's state
         ],
         bw: 71.8, bwTrend: -0.11,
-        mvc: 48, mvcGain: 3.4, cfPct: 0.62,
+        /* Sat where his real July test sits — right hand well ahead of
+           left, and the left's critical force read partly off a rep the
+           device flagged, which is what that test actually looked like. */
+        cf: { right: 23.3, left: 17.0, gain: 1.6, latestFlag: { left: [23] } },
         coachNote: 'Last week of the block. Hold the load — no chasing numbers now.'
       }),
       /* Jade — week 2 of 8, base phase, no PE sessions scheduled yet.
@@ -365,7 +454,7 @@
           { tfd:'111', half:'111' }    // wk2  both at 1/2  ← today's state
         ],
         bw: 57.4, bwTrend: 0.04,
-        mvc: 33, mvcGain: 2.1, cfPct: 0.58,
+        cf: { right: 14.1, left: 13.4, gain: 1.1 },
         coachNote: 'Base phase — keep the endurance conversational. Volume over intensity.'
       })
   });

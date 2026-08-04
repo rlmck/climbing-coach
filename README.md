@@ -99,6 +99,59 @@ switch to yourself to log.
 dashboard tile or the Progress screen. One reading per day; logging the
 same day again replaces it.
 
+**Critical force** — the one thing on an athlete's record they can't put
+there themselves. See below.
+
+## Critical force
+
+A test is a file off a load cell, not something typed in from memory, so
+it doesn't go through a log flow. The coach opens the athlete's Progress
+screen and uploads it; the athlete only ever reads it. The rules say the
+same thing, so an athlete who fancied flattering their own numbers has
+nowhere to type them.
+
+**The device writes one file per hand**, and puts the athlete's name and
+the grip in the *filename* and nowhere else:
+
+```
+Maks_half_crimp_left_cf-test-2026-07-20T18-35-30.json
+name ─┘ grip ────┘ hand ┘         when ┘
+```
+
+So everything the upload sheet shows is a guess until the coach agrees
+with it. Both hands can go in at once and pair themselves on date and
+grip; a single hand is still a test. A name that doesn't match the
+athlete whose screen you're on is said out loud, because uploading
+Jade's test onto Maks is the mistake worth catching — as is staging two
+tests on one date and grip, which would land on the same record and
+silently keep one. That one blocks the save until it's settled.
+
+**Zones lead the card**, because they're the only part of a test an
+athlete can act on: a band of load to pull repeaters at, per hand, on one
+shared axis so the gap between hands is the first thing you see. The
+numbers come second and the decay curve third — the reverse of how the
+device presents it, and the right way round for whoever trains off it.
+
+**The device's own arithmetic is never re-done.** Critical force, the
+zone boundaries and the per-rep averages pass through untouched.
+`js/cftest.js` adds only the bookkeeping the export leaves out: which
+reps the critical force was averaged from, and whether the device
+trusted them.
+
+**That last part is the whole reason the card is shaped the way it is.**
+Sampling on these tests is thin and uneven, and the device says so. A rep
+it couldn't sample enough of is flagged; in Maks's real July test that's
+8 of 24 reps on the right hand, and on the left it's a rep sitting
+*inside* the closing three that define the critical force — so that
+headline number partly rests on a rep the device itself doesn't trust.
+A rep that recorded nothing at all comes through as an average of zero,
+which is missing data and not a rep pulled at zero force.
+
+None of that is smoothed away. Flagged reps get hollow markers, a rep
+with nothing in it breaks the trace instead of dropping it to the floor,
+the closing three are shaded where they're read, and anything worth
+saying in words is said under the chart.
+
 ## The backend
 
 Firebase project **`coach-climbing-app`**, Firestore in **europe-west2**.
@@ -119,8 +172,15 @@ athletes/{id}                    members[], coachId, clientUid, invitePin,
   …/slots/{id}                   week, type, date, sessionId
   …/sessions/{id}                date, type, mode, reps|problems|fields, notes
   …/bodyweight/{yyyy-mm-dd}      one reading per day — the date is the key
-  …/maxHang/{id}  …/criticalForce/{id}
+  …/maxHang/{id}
+  …/criticalForce/{id}           date, grip, bodyweight,
+                                 hands.{left,right} — one test, both hands
 ```
+
+A critical-force document carries the raw per-rep traces, which is most
+of its ~40 KB against a 1 MiB limit. Kept whole rather than split off:
+the trace is the only record of how a rep was actually pulled, and a test
+is read as one thing.
 
 `members` is the only thing access control reads, so one check governs
 every subcollection. **Nothing derived is stored** — prescribed loads and
@@ -203,9 +263,12 @@ document that lands are one record, never two.
 ## Deliberately placeholder
 
 Endurance and power-endurance sub-forms (field sets are a first guess),
-the exact chart types, and the streak rules. The critical-force data
-shape is invented — a critical force in kg, a % of max, a W′ reserve, and
-a 24-rep decay curve.
+the exact chart types, and the streak rules.
+
+Critical force used to be on this list. It isn't any more: the shape is
+the device's real export, and the mock world is generated as device files
+and read back through the same parser an upload goes through — so the
+prototype exercises the real code path, flagged reps and all.
 
 ## Layout
 
@@ -217,6 +280,9 @@ firestore.indexes.json
 assets/css/app.css     tokens, then components in screen order
 js/config.js           which backend, if any
 js/firebase.js         the SDK, loaded from a CDN by dynamic import
+js/cftest.js           the critical-force device's export, normalised.
+                       Loads before data.js — the mock world is built
+                       through it too
 js/repo.js             Firestore in, CT.world out
 js/data.js             the mock world, generated relative to today's date
 js/store.js            derived state, the progression rule, rest-day rules
@@ -228,7 +294,8 @@ js/views/              signin (the code pad, and the coach's way in) ·
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,
-                       plan-ahead picker) · onboard
+                       plan-ahead picker) · onboard ·
+                       cfupload (device files in, confirmed by the coach)
 js/app.js              shell, routing, user switching
 ```
 
