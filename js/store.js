@@ -32,6 +32,13 @@
     client(id)  { return CT.world.clients[id || state.activeClient]; },
     clients()   { return Object.values(CT.world.clients); },
 
+    /* A coach who trains has an athlete record of their own, sitting in
+       the same collection as everybody else's because it is the same
+       kind of thing. It just isn't a client — so the roster leaves it
+       out, and the coach's own screens are the only place it shows up. */
+    selfAthlete() { return Object.values(CT.world.clients).find(c => c.isSelf) || null; },
+    roster()      { return Object.values(CT.world.clients).filter(c => !c.isSelf); },
+
     setUser(id) {
       state.viewAs = id;
       if (id !== 'coach') state.activeClient = id;

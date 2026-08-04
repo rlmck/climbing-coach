@@ -25,6 +25,10 @@ Bottom-left of the sidebar. Three mock people, no auth:
 | **Maks** | Client | Week 8 of 8, power-endurance phase, one session short of a 4-week streak |
 | **Jade** | Client | Week 2 of 8, base phase — no power-endurance sessions scheduled yet |
 
+Against a real backend the switcher is a coach's tool only. An athlete is
+only ever themselves; a coach switches between their roster and, if they
+train, their own block.
+
 ## What to poke at
 
 **Strength log** — the flow that's fully spec'd. Open it as Maks. His
@@ -79,7 +83,17 @@ block dates and length, starting hang loads, and the days they train.
 The days you pick *are* the weekly target — one suggested slot per
 prescribed session — so the plan and the target can't drift apart. The
 new athlete appears in the roster and the user switcher immediately, with
-empty states everywhere they have no history yet.
+empty states everywhere they have no history yet. Against a real backend
+it also mints their six-digit code, which the sheet then shows you.
+
+**Your own training** — coaches climb. "Set up my block" on the Clients
+screen runs the same onboarding form with you as the athlete: your days,
+your dates, your starting loads, devised by you rather than prescribed to
+you. It's an ordinary athlete record that happens to be claimed by the
+account that made it, so there's no code and nothing to hand over. It
+stays out of the client roster, and the switcher labels it **You**.
+Logging is disabled while you're viewing someone as their coach, so
+switch to yourself to log.
 
 **Bodyweight** — clients log a reading whenever they weigh in, from the
 dashboard tile or the Progress screen. One reading per day; logging the
@@ -97,8 +111,10 @@ Firestore. There is no third mode and no build step either way.
 **Shape.** Everything hangs off one document:
 
 ```
-users/{uid}                      role, name — private to that user
-athletes/{id}                    members[], coachId, clientUid, inviteEmail,
+users/{uid}                      role, name, athleteId — private to that user
+invites/{123456}                 the six digits ARE the id.
+                                 athleteId, coachId, claimedBy, expiresAt
+athletes/{id}                    members[], coachId, clientUid, invitePin,
                                  block, targets, template, startLoads
   …/slots/{id}                   week, type, date, sessionId
   …/sessions/{id}                date, type, mode, reps|problems|fields, notes
@@ -111,32 +127,72 @@ every subcollection. **Nothing derived is stored** — prescribed loads and
 clean-session streaks are replayed from the session list on the client,
 so no stored number can ever disagree with the sessions behind it.
 
-**Invites, without a Cloud Function.** A coach onboards an athlete with
-their email, which lands in `inviteEmail`. When someone signs in on that
-address, the rules let them add themselves to `members` — once, and
-without touching anything else. The email is read off their identity
-token, not from anything they typed, and it has to be **verified** —
-otherwise anyone could guess an invited address, sign up on it first, and
-walk off with the athlete record waiting there.
+### Signing in is six digits
 
-**Invite-only.** Anyone can hold a Firebase Auth account; sign-up can't be
-closed off from the client. What an account can't do is *become*
-anything. A profile created from the app is a `client`, always — there is
-no path in the rules that mints a coach — and creating an athlete record
-requires already being one. Sign in with no invite waiting and the app
-writes nothing at all, not even an empty profile, and shows a dead end.
-The check runs afresh on every sign-in, so signing up before your coach
-gets round to inviting you costs nothing: the next sign-in just works.
+An athlete never types an address or a password, and never sees a
+confirmation email. The coach reads them a six-digit code; they type it
+once; the phone remembers them from then on.
+
+What remembers them is an **anonymous Firebase account**, minted on first
+launch and living in IndexedDB. That account is the identity — the code
+is only the thing that attaches it to an athlete record. Since the coach
+already typed their name at onboarding, the app never has to ask.
+
+**The claim, without a Cloud Function.** The code is a document id:
+`invites/123456`. Looking one up is therefore the same act as knowing it.
+Spending it stamps the holder's uid onto that invite, and *that stamp* is
+the only proof the athlete record will accept. Two writes, each allowed
+on its own terms, and the second is worthless without the first.
+
+**Guessing is the exposure this design accepts**, and it is worth saying
+plainly. Six digits is a million doors, of which a coach has a handful
+unlocked at any time. Each closes the moment it is spent and again after
+30 days, and a code that was never issued, one already spent by someone
+else, and one that has lapsed are indistinguishable from outside — so a
+guess that misses teaches nothing. Thin cover for a bank; ample for a
+coach with a dozen athletes, and the alternative is a Cloud Function.
+
+**Losing the phone** is the one thing that has no self-service fix, and
+that's deliberate: there is no address to send a reset link to. The coach
+opens **Access** on the roster and issues a new code, which puts the
+record back to just them and opens it to whoever types the new one. Every
+session, load and note stays exactly where it is. The replaced device
+notices on next launch and says so, rather than showing an empty
+dashboard that reads like a broken app.
+
+**Invite-only.** Anonymous sign-in hands an account to every device that
+opens the app. What an account can't do is *become* anything: a profile
+may only be created by someone who already holds an athlete, and it is a
+`client` profile, always — there is no path in the rules that mints a
+coach. So "has no profile" and "has spent no code" are the same sentence,
+which is exactly what lets the app show the code screen on that basis.
 
 **Adding a coach** is therefore a deliberate act, done in the Firestore
 console: create `users/{uid}` with `role: 'coach'` for an account that
-already exists. Nothing in the app will do it for you, by design.
+already exists. Nothing in the app will do it for you, by design. Coaches
+are the one account with an address on it, behind "I'm a coach" on the
+sign-in screen.
+
+**Turn on Anonymous sign-in** in the Firebase console (Authentication →
+Sign-in method) or no athlete can get in — the sign-in screen says as
+much rather than failing silently.
 
 **Offline** is Firestore's persistent cache doing the work. Writes queue
 locally and fire their snapshot immediately, so a session logged in a
 basement is on screen at once and syncs when signal returns. The rail
-says "Saving…" until it has. Signing in is the one thing that needs a
-connection, and the sign-in screen says so.
+says "Saving…" until it has. Entering a code is the one thing that needs
+a connection, and the code screen says so.
+
+**An athlete record is written before its plan**, never in the same
+batch, and that ordering is load-bearing. Every rule guarding a slot asks
+whether you're a member of the athlete above it, and a rule's `get()`
+reads the database as it stood *before* the write it is judging. Batch
+the two together and the slots are checked against an athlete that
+doesn't exist yet: `members` is read off nothing, the expression fails,
+and the whole batch comes back `permission-denied`. Same reason the
+roster listener waits for the record to be acknowledged before opening
+listeners on its subcollections — a listener refused that way is refused
+for good, because `onSnapshot` reports the error and stops.
 
 **Writes are optimistic twice over.** The store changes `CT.world` now,
 as it always did, and hands the same change to `js/repo.js` to persist;
@@ -166,7 +222,9 @@ js/data.js             the mock world, generated relative to today's date
 js/store.js            derived state, the progression rule, rest-day rules
 js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
 js/charts.js           hand-rolled SVG charts
-js/views/              signin · dashboard · schedule · progress · coach
+js/views/              signin (the code pad, and the coach's way in) ·
+                       dashboard · schedule · progress · coach ·
+                       invite (a code, and how to replace it)
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,

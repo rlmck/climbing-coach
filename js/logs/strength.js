@@ -52,23 +52,29 @@
     }
   };
 
-  /* ═════════════════ delete, with one step of friction ═════════════════
+  /* ═════════════════ one step of friction ═════════════════
      No second modal — the button arms itself and disarms after a few
-     seconds if you walk away from it. */
-  CT.deleteButton = function (onConfirm, label) {
+     seconds if you walk away from it. Used for anything that undoes
+     work: deleting a session, taking a planned one off the calendar,
+     cutting an athlete off from their own training. */
+  CT.armButton = function (onConfirm, label, armedLabel, cls, ic) {
     let armed = false, timer = null;
-    const text = el('span', { text: label || 'Delete' });
-    const btn = el('button', { class: 'btn btn--ghost btn--danger', onclick: () => {
+    const text = el('span', { text: label });
+    const btn = el('button', { class: cls || 'btn btn--ghost btn--danger', onclick: () => {
       if (armed) { clearTimeout(timer); onConfirm(); return; }
       armed = true;
       btn.classList.add('is-armed');
-      text.textContent = 'Tap again to confirm';
+      text.textContent = armedLabel || 'Tap again to confirm';
       motion.shake(btn);
       timer = setTimeout(() => {
-        armed = false; btn.classList.remove('is-armed'); text.textContent = label || 'Delete';
+        armed = false; btn.classList.remove('is-armed'); text.textContent = label;
       }, 3500);
-    }}, [ icon('x'), text ]);
+    }}, [ icon(ic || 'x'), text ]);
     return btn;
+  };
+
+  CT.deleteButton = function (onConfirm, label) {
+    return CT.armButton(onConfirm, label || 'Delete', 'Tap again to confirm');
   };
 
   /* ═════════════════ date bar — retro logging is first-class ═════════════════ */

@@ -24,8 +24,11 @@
     enabled: false,
     user: null,
     profile: null,
-    /* why start() gave up, when it did: 'unverified' | 'no-invite' */
+    /* why start() gave up, when it did: 'no-code' */
     blocked: null,
+    /* has the roster listener come back at least once — as opposed to
+       having come back empty */
+    rosterLoaded: false,
     /* true while any local write has not been acknowledged by the server */
     syncing: false,
     onSync: null,
@@ -96,7 +99,15 @@
       coachNote: d.coachNote || '',
       coachId: d.coachId,
       clientUid: d.clientUid || null,
-      inviteEmail: d.inviteEmail || null,
+      /* The outstanding code and when it lapses, so the coach can read
+         it back off the roster instead of having to remember it. Only
+         members can see these, and the members are the coach and the
+         athlete it already belongs to. */
+      invitePin: d.invitePin || null,
+      inviteExpires: d.inviteExpires ? d.inviteExpires.toDate() : null,
+      /* The coach's own training. Same record as everyone else's — the
+         only difference is that they are both ends of it. */
+      isSelf: !!(repo.user && d.coachId === repo.user.uid && d.clientUid === repo.user.uid),
       slots: c.slots || [],
       sessions: c.sessions || [],
       bodyweight: (c.bodyweight || []).slice().sort((a, b) => a.date < b.date ? -1 : 1),
@@ -120,9 +131,16 @@
     }, err => console.warn('[repo] ' + coll + ' listener:', err.code || err.message));
   }
 
+  function ensureCache(athleteId) {
+    if (!repo._cache.has(athleteId)) {
+      repo._cache.set(athleteId, { doc: null, slots: [], sessions: [], bodyweight: [], maxHang: [], criticalForce: [] });
+    }
+    return repo._cache.get(athleteId);
+  }
+
   function watchAthlete(athleteId) {
     if (repo._perAthlete.has(athleteId)) return;
-    repo._cache.set(athleteId, { doc: null, slots: [], sessions: [], bodyweight: [], maxHang: [], criticalForce: [] });
+    ensureCache(athleteId);
     const subs = ['slots', 'sessions', 'bodyweight', 'maxHang', 'criticalForce'].map(k => watchSub(athleteId, k));
     repo._perAthlete.set(athleteId, subs);
   }
@@ -145,13 +163,34 @@
       const seen = new Set();
       snap.docs.forEach(d => {
         seen.add(d.id);
-        watchAthlete(d.id);
-        repo._cache.get(d.id).doc = d.data();
+        ensureCache(d.id).doc = d.data();
+
+        /* Not while the record is still only a local write. Every rule
+           guarding a subcollection asks the server whether you are a
+           member of an athlete document the server hasn't been given
+           yet — so it says no, and a listener refused that way is
+           refused for good: onSnapshot reports the error and stops,
+           it does not retry. A coach who had just onboarded someone
+           would sit in front of five dead listeners until they
+           reloaded the page.
+
+           This snapshot fires again the moment the write is
+           acknowledged, and the listeners start then. */
+        if (!d.metadata.hasPendingWrites) watchAthlete(d.id);
         rebuild(d.id);
       });
-      [...repo._perAthlete.keys()].forEach(id => { if (!seen.has(id)) unwatchAthlete(id); });
+      /* Over the cache rather than the listeners, so an athlete that
+         was only ever a pending write is cleaned up too if it is
+         rolled back. */
+      [...repo._cache.keys()].forEach(id => { if (!seen.has(id)) unwatchAthlete(id); });
 
       setSyncing(snap.metadata.hasPendingWrites);
+      /* "The roster has answered", as distinct from "the roster is
+         empty" — the boot gives up waiting after four seconds, and the
+         difference between those two decides whether an athlete with
+         nothing to show is asked for a new code or simply told to
+         wait. */
+      repo.rosterLoaded = true;
       if (!repo._firstDone) { repo._firstDone = true; if (repo._resolveFirst) repo._resolveFirst(); }
       scheduleRender();
     }, err => {
@@ -162,66 +201,140 @@
 
   /* ═════════════════ identity ═════════════════ */
 
-  /* A profile is created on first sign-in, and only for someone a coach
-     was already expecting. No invite, no profile — not an empty one, not
-     a coach one, nothing. Holding an account is not the same as having
-     somewhere to put it, and the caller turns that into a dead end.
+  /* A profile exists only for someone who already holds an athlete —
+     the rules see to that — so its absence is not an empty state to fill
+     in, it is the answer: this account has never spent a code. The
+     caller turns that into the code screen.
 
-     Signing up before your coach has got round to inviting you is a real
-     thing to do, so this is checked afresh every sign-in rather than
-     being decided once. Get invited later and the next sign-in works. */
+     Nothing is created here. An athlete's profile is written by
+     redeemPin() at the moment it becomes true; a coach's is written in
+     the console, deliberately, by a person. */
   async function loadProfile(user) {
-    const { doc, getDoc, setDoc, serverTimestamp } = F();
-    const ref = doc(fb().db, 'users', user.uid);
-    const snap = await getDoc(ref);
-    if (snap.exists()) return Object.assign({ uid: user.uid }, snap.data());
-
-    /* Claiming is gated on a verified address, in the rules and here.
-       Without that, anyone could guess an invited email, sign up on it
-       first and walk off with the athlete record addressed to them.
-       Only the claim needs this — someone who already has a profile is
-       past this gate for good. */
-    if (!user.emailVerified) { repo.blocked = 'unverified'; return null; }
-
-    const claimed = await claimInvite(user);
-    if (!claimed) { repo.blocked = 'no-invite'; return null; }
-
-    const name = user.displayName || (user.email || '').split('@')[0];
-    const profile = {
-      role: 'client',
-      name: name.split(/\s+/)[0],
-      full: name,
-      initials: CT.initialsOf(name),
-      email: user.email || null,
-      athleteId: claimed,
-      createdAt: serverTimestamp()
-    };
-    await setDoc(ref, profile);
-    return Object.assign({ uid: user.uid }, profile);
+    const { doc, getDoc } = F();
+    const snap = await getDoc(doc(fb().db, 'users', user.uid));
+    if (!snap.exists()) { repo.blocked = 'no-code'; return null; }
+    return Object.assign({ uid: user.uid }, snap.data());
   }
 
-  /* The claim: an athlete record addressed to this email adds this user
-     to its members. The rules allow exactly this one change and nothing
-     else, so it doesn't matter that the client is the one asking. */
-  async function claimInvite(user) {
-    if (!user.email) return null;
-    const { collection, query, where, getDocs, updateDoc, doc, arrayUnion, serverTimestamp } = F();
+  /* ═════════════════ codes ═════════════════
+     Six digits, from the platform's cryptographic source rather than
+     Math.random — a code that can be predicted from the last one isn't
+     a code. Leading zeros are kept: the id is a string and '004821' is
+     six digits like any other. */
+  const PIN_DAYS = 30;
+
+  function newPin() {
+    const n = new Uint32Array(1);
+    crypto.getRandomValues(n);
+    return String(n[0] % 1000000).padStart(6, '0');
+  }
+
+  /* Mint one and point the athlete at it. A code already in use fails
+     the create rule — writing over an existing document is an update,
+     and the update rule only ever allows someone to spend one — so a
+     collision surfaces as a refusal and costs a retry, not a silent
+     theft of somebody else's invite. */
+  repo.issueInvite = async function (athleteId) {
+    const { doc, setDoc, updateDoc, serverTimestamp } = F();
+    const expiresAt = new Date(Date.now() + PIN_DAYS * 86400000);
+    let last = null;
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const pin = newPin();
+      try {
+        await setDoc(doc(fb().db, 'invites', pin), {
+          athleteId,
+          coachId: repo.user.uid,
+          claimedBy: null,
+          claimedAt: null,
+          expiresAt,
+          createdAt: serverTimestamp()
+        });
+      } catch (e) {
+        last = e;
+        if ((e.code || '') === 'permission-denied') continue;   // taken; try another
+        throw e;
+      }
+      await updateDoc(doc(fb().db, 'athletes', athleteId), { invitePin: pin, inviteExpires: expiresAt });
+      return { pin, expiresAt };
+    }
+    throw last || { code: 'invite/unknown' };
+  };
+
+  /* Handing out a second code. The record goes back to just the coach
+     first, because the claim rule only opens for an athlete nobody
+     holds. Sessions, slots and loads are untouched — this changes who
+     can reach the training, never the training. */
+  repo.resetAccess = async function (athleteId) {
+    const { doc, updateDoc } = F();
+    await updateDoc(doc(fb().db, 'athletes', athleteId), {
+      clientUid: null,
+      members: [repo.user.uid]
+    });
+    return repo.issueInvite(athleteId);
+  };
+
+  /* Spending one. Three writes, in this order and no other: stamp the
+     invite, because that stamp is the only proof the athlete record
+     will accept; join the athlete; then write the profile, which is
+     what makes the next launch skip all of this.
+
+     Each step checks whether it has already happened, so a code
+     interrupted halfway — a tunnel, a dead battery — finishes where it
+     stopped when it's entered again. */
+  repo.redeemPin = async function (pin) {
+    const { doc, getDoc, setDoc, updateDoc, arrayUnion, serverTimestamp } = F();
+    const user = fb().auth.currentUser;
+    if (!user) throw { code: 'invite/unknown' };
+
+    const iRef = doc(fb().db, 'invites', pin);
+    let invite;
     try {
-      const q = query(collection(fb().db, 'athletes'), where('inviteEmail', '==', user.email.toLowerCase()));
-      const found = await getDocs(q);
-      const open = found.docs.find(d => !d.data().clientUid);
-      if (!open) return null;
-      await updateDoc(doc(fb().db, 'athletes', open.id), {
+      const snap = await getDoc(iRef);
+      if (!snap.exists()) throw { code: 'invite/unknown' };
+      invite = snap.data();
+    } catch (e) {
+      /* Never issued, already spent by somebody else, or lapsed — the
+         rules refuse all three identically, and so does this. */
+      if ((e.code || '') === 'permission-denied') throw { code: 'invite/unknown' };
+      throw e;
+    }
+
+    if (!invite.claimedBy) {
+      await updateDoc(iRef, { claimedBy: user.uid, claimedAt: serverTimestamp() });
+    } else if (invite.claimedBy !== user.uid) {
+      throw { code: 'invite/unknown' };
+    }
+
+    const aRef = doc(fb().db, 'athletes', invite.athleteId);
+    const aSnap = await getDoc(aRef);
+    if (!aSnap.exists()) throw { code: 'invite/unknown' };
+    const athlete = aSnap.data();
+
+    if (!athlete.clientUid) {
+      await updateDoc(aRef, {
         clientUid: user.uid,
         members: arrayUnion(user.uid),
         claimedAt: serverTimestamp()
       });
-      return open.id;
-    } catch (e) {
-      console.warn('[repo] invite claim:', e.code || e.message);
-      return null;
+    } else if (athlete.clientUid !== user.uid) {
+      throw { code: 'invite/taken' };
     }
-  }
+
+    /* The name is the one the coach typed at onboarding. Nobody signing
+       in this way has ever told the app who they are, and they
+       shouldn't have to — their coach already did. */
+    await setDoc(doc(fb().db, 'users', user.uid), {
+      role: 'client',
+      name: athlete.name,
+      full: athlete.full,
+      initials: athlete.initials,
+      athleteId: invite.athleteId,
+      createdAt: serverTimestamp()
+    });
+
+    return invite.athleteId;
+  };
 
   /* ═════════════════ lifecycle ═════════════════ */
 
@@ -235,6 +348,7 @@
     if (!profile) { repo.stop(); return null; }     // an account with nowhere to go
     repo.profile = profile;
     repo._firstDone = false;
+    repo.rosterLoaded = false;
 
     CT.world.clients = {};
     CT.world.coach = {
@@ -258,6 +372,7 @@
     repo.user = null;
     repo.profile = null;
     repo._firstDone = false;
+    repo.rosterLoaded = false;
     /* `blocked` deliberately survives — stop() is what start() calls on
        its way out, and the reason it gave up is the whole message. */
   };
@@ -321,39 +436,59 @@
      them here anyway. */
   repo.saveAthlete = function (c, patch) {
     if (!repo.enabled) return;
-    const allowed = ['name', 'full', 'initials', 'block', 'targets', 'template', 'startLoads', 'coachNote', 'inviteEmail'];
+    const allowed = ['name', 'full', 'initials', 'block', 'targets', 'template', 'startLoads', 'coachNote'];
     const body = {};
     Object.keys(patch || c).forEach(k => { if (allowed.includes(k)) body[k] = (patch || c)[k]; });
     if (!Object.keys(body).length) return;
     push(F().updateDoc(F().doc(fb().db, 'athletes', c.id), clean(body)), 'that change');
   };
 
-  /* Onboarding. The athlete record and its whole starting plan land in
-     one batch, so a half-created athlete is never a state anyone sees. */
-  repo.createAthlete = async function (client, inviteEmail) {
-    if (!repo.enabled) return client.id;
-    const { doc, collection, writeBatch, serverTimestamp } = F();
-    const aRef = doc(collection(fb().db, 'athletes'));
-    const batch = writeBatch(fb().db);
+  /* Onboarding. The athlete record lands first and its opening plan
+     follows, and that order is not a preference — it is the only order
+     that works. Every rule guarding a slot asks whether you are a member
+     of the athlete above it, and a rule's get() reads the database as it
+     stood *before* the write it is judging. Put both in one batch and
+     the slots are checked against an athlete that does not exist yet:
+     members is read off nothing, the expression fails, and the whole
+     batch comes back permission-denied. Which is what it did.
 
-    batch.set(aRef, clean({
+     So there is a moment where an athlete exists with no plan under it.
+     The coach's own snapshot listener paints it either way and the plan
+     arrives a beat later; a torn write here is a record to add slots to,
+     not a record nobody can use. */
+  repo.createAthlete = async function (client, opts) {
+    if (!repo.enabled) return client.id;
+    const { doc, collection, setDoc, writeBatch, serverTimestamp } = F();
+    const aRef = doc(collection(fb().db, 'athletes'));
+    const self = !!(opts && opts.self);
+
+    await setDoc(aRef, clean({
       coachId: repo.user.uid,
-      clientUid: null,
+      /* Nobody to send a code to when the athlete is the coach. */
+      clientUid: self ? repo.user.uid : null,
       members: [repo.user.uid],
-      inviteEmail: inviteEmail ? inviteEmail.trim().toLowerCase() : null,
+      invitePin: null,
+      inviteExpires: null,
       name: client.name, full: client.full, initials: client.initials,
       block: client.block, targets: client.targets, template: client.template,
       startLoads: client.startLoads, coachNote: client.coachNote || '',
       createdAt: serverTimestamp()
     }));
 
-    (client.slots || []).forEach(s => {
-      const body = clean(Object.assign({}, s));
-      delete body.id; delete body.status;
-      batch.set(doc(fb().db, 'athletes', aRef.id, 'slots', s.id), body);
-    });
+    /* A batch caps at 500 writes. A twelve-week block with five sessions
+       a week is nowhere near it, but the plan shouldn't depend on that
+       staying true. */
+    const slots = client.slots || [];
+    for (let i = 0; i < slots.length; i += 400) {
+      const batch = writeBatch(fb().db);
+      slots.slice(i, i + 400).forEach(s => {
+        const body = clean(Object.assign({}, s));
+        delete body.id; delete body.status;
+        batch.set(doc(fb().db, 'athletes', aRef.id, 'slots', s.id), body);
+      });
+      await batch.commit();
+    }
 
-    await batch.commit();
     return aRef.id;
   };
 

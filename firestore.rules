@@ -8,11 +8,19 @@ rules_version = '2';
    once they've claimed it. Every piece of training data lives in a
    subcollection of that record, so one membership check governs the lot.
 
-   Claiming is done without a Cloud Function: the coach writes the
-   athlete's email into `inviteEmail`, and a signed-in user whose *token*
-   carries that same email may add themselves to `members` — once, and
-   without changing anything else. The email in the token comes from the
-   identity provider, not from the client, so it can't be spoofed.
+   Claiming is done with a six-digit code and no Cloud Function. The
+   coach mints an `invites/{code}` document — the six digits *are* the
+   id — and reads the code out to the athlete. The athlete spends it,
+   which stamps their uid onto the invite, and that stamp is the proof
+   the athlete record then asks for. Two writes, both allowed on their
+   own terms, and the second is worthless without the first.
+
+   An athlete's identity is an anonymous Firebase account living in the
+   browser on their phone. They type the code once; the account is what
+   remembers them afterwards. Nothing is emailed, nothing is verified,
+   and there is no password for anyone to forget. When a phone is lost
+   the coach issues a new code, which is the only recovery path and the
+   right one — the coach is the authority on who their athletes are.
 
    Nothing derived is stored. Prescribed loads and clean-session streaks
    are replayed from the session list on the client, so there is no
@@ -22,12 +30,8 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn()  { return request.auth != null; }
-    function uid()       { return request.auth.uid; }
-    function tokenEmail() {
-      return signedIn() && request.auth.token.email_verified == true
-        ? request.auth.token.email : '';
-    }
+    function signedIn() { return request.auth != null; }
+    function uid()      { return request.auth.uid; }
 
     function athleteDoc(aid) {
       return get(/databases/$(database)/documents/athletes/$(aid)).data;
@@ -45,59 +49,129 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid())).data.role == 'coach';
     }
 
+    /* Did this user spend the code that opens this athlete? Reads made
+       from inside a rule are not themselves subject to rules, so a spent
+       invite is still legible here after it has stopped being legible to
+       the person holding it. */
+    function spentInvite(pin) {
+      return signedIn() && pin is string && pin != ''
+        && exists(/databases/$(database)/documents/invites/$(pin))
+        && get(/databases/$(database)/documents/invites/$(pin)).data.claimedBy == uid();
+    }
+
     /* ── who you are ───────────────────────────────────────────
        Private to you. A coach never reads these: the athlete record
        carries its own display name, so a roster needs no user lookups.
 
-       Anyone can hold a Firebase Auth account — sign-up can't be closed
-       off from the client. What it can't do is become anything. A profile
-       created from the app is a client, always; there is no path here
-       that mints a coach. An account with no invite waiting for it ends
-       up with a profile that reads nothing and owns nothing. */
+       Anyone can hold a Firebase Auth account — anonymous sign-in hands
+       one to every device that opens the app. What an account can't do
+       is become anything. A profile may only be created by someone who
+       already holds an athlete, and it is a client profile, always;
+       there is no path here that mints a coach. So "has no profile" and
+       "has spent no code" are the same sentence, which is what lets the
+       app show the code screen on that basis alone. */
     match /users/{userId} {
       allow read: if signedIn() && uid() == userId;
       allow create: if signedIn() && uid() == userId
-                    && request.resource.data.role == 'client';
+                    && request.resource.data.role == 'client'
+                    && isMember(request.resource.data.athleteId);
       allow update: if signedIn() && uid() == userId
                     && request.resource.data.role == resource.data.role;   // no self-promotion
       allow delete: if false;
     }
 
+    /* ── the codes ─────────────────────────────────────────────
+       One document per outstanding invite, named for the six digits it
+       is. Looking one up is therefore the same act as knowing it.
+
+       Guessing is the exposure this design accepts, and it is worth
+       stating plainly: six digits is a million doors, of which a coach
+       has a handful unlocked at any time. Each closes the moment it is
+       spent and again when it lapses, and a code that was never issued,
+       one already spent by someone else, and one that has run out are
+       all indistinguishable from here — so a guess that misses teaches
+       nothing. Thin cover for a bank; ample for a coach with a dozen
+       athletes, and the alternative is a Cloud Function. */
+    match /invites/{pin} {
+      allow get: if signedIn()
+        && request.time < resource.data.expiresAt
+        && (resource.data.claimedBy == null || resource.data.claimedBy == uid());
+
+      /* No enumerating the collection, ever. */
+      allow list: if false;
+
+      allow create: if isCoach()
+        && pin.matches('^[0-9]{6}$')
+        && request.resource.data.coachId == uid()
+        && request.resource.data.athleteId is string
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.claimedBy == null;
+
+      /* Spending it: one write, two fields, and only while it is open.
+         A second attempt by the same person is refused here and doesn't
+         need to succeed — the stamp from the first one still stands. */
+      allow update: if signedIn()
+        && request.time < resource.data.expiresAt
+        && resource.data.claimedBy == null
+        && request.resource.data.claimedBy == uid()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['claimedBy', 'claimedAt']);
+
+      /* Withdrawing one that hasn't been handed out. */
+      allow delete: if isCoach() && resource.data.coachId == uid();
+    }
+
     /* ── the athlete record ────────────────────────────────── */
     match /athletes/{aid} {
 
-      /* Members see it. So does the person it was addressed to, who
-         needs to find it before they can be a member. */
+      /* Members see it. So does whoever just spent its code, who needs
+         to read it before they are a member — that is where the name on
+         their own profile comes from. */
       allow read: if signedIn() && (
         uid() in resource.data.members ||
-        (tokenEmail() != '' && tokenEmail() == resource.data.inviteEmail)
+        spentInvite(resource.data.get('invitePin', ''))
       );
 
-      /* Only a coach creates one, only for themselves, and the members
-         list starts as just them. Being a coach is the gate: without it a
-         signed-in stranger could fill this collection with records nobody
-         asked for. */
+      /* Only a coach creates one, and only for themselves. Usually it
+         starts unclaimed and waits for its code to be spent; a coach
+         adding their own training claims it in the same breath, because
+         there is nobody to send a code to. */
       allow create: if isCoach()
         && request.resource.data.coachId == uid()
         && request.resource.data.members == [uid()]
-        && request.resource.data.clientUid == null;
+        && (request.resource.data.clientUid == null
+            || request.resource.data.clientUid == uid());
 
       /* A member may edit the record, but never rewrite who can see it —
-         membership changes only through a claim. */
+         membership changes only through a claim — and never mint
+         themselves a fresh code to hand on to someone else. */
       allow update: if signedIn() && uid() in resource.data.members
         && request.resource.data.members == resource.data.members
-        && request.resource.data.coachId == resource.data.coachId;
+        && request.resource.data.coachId == resource.data.coachId
+        && request.resource.data.get('clientUid', null) == resource.data.get('clientUid', null)
+        && (uid() == resource.data.coachId
+            || request.resource.data.get('invitePin', null) == resource.data.get('invitePin', null));
 
-      /* The claim: the invited email adds itself, once, and touches
-         nothing else on the way in. */
+      /* The claim: whoever spent this record's code is added, once, and
+         touches nothing else on the way in. */
       allow update: if signedIn()
-        && tokenEmail() != ''
-        && tokenEmail() == resource.data.inviteEmail
         && resource.data.clientUid == null
+        && spentInvite(resource.data.get('invitePin', ''))
         && request.resource.data.clientUid == uid()
         && request.resource.data.members == resource.data.members.concat([uid()])
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['members', 'clientUid', 'claimedAt']);
+
+      /* Starting again. A phone goes in a river, a browser gets cleared,
+         and the anonymous account that *was* this athlete is gone with
+         no way to reconstruct it. The coach puts the record back to just
+         themselves and issues another code. The training data is
+         untouched; only who can reach it changes. */
+      allow update: if isCoach()
+        && uid() == resource.data.coachId
+        && request.resource.data.coachId == resource.data.coachId
+        && request.resource.data.members == [uid()]
+        && request.resource.data.clientUid == null;
 
       /* Deleting an athlete would orphan every subcollection under it.
          That belongs in a considered admin path, not a stray call. */
@@ -106,7 +180,14 @@ service cloud.firestore {
       /* ── training data ────────────────────────────────────
          One membership check covers all of it. Dates are the join key
          everywhere in the app, so they are required and immutable in
-         shape; the client replays the rest. */
+         shape; the client replays the rest.
+
+         Note that isMember() reads the parent athlete document as it
+         stands *before* the current write — a rule's get() cannot see
+         another write in the same batch. So an athlete record and its
+         opening plan can never be created in one batch: the plan would
+         be checked against an athlete that does not exist yet. repo.js
+         writes the record first for exactly this reason. */
       match /slots/{slotId} {
         allow read: if isMember(aid);
         allow create, update: if isMember(aid)

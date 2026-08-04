@@ -1,9 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════
-   logs/onboard.js — a coach sets up a new athlete.
+   logs/onboard.js — a coach sets up an athlete.
 
    The days picked here are the weekly targets: one suggested slot
    per prescribed session, so the plan and the target can never
    drift apart. Everything else the athlete builds themselves.
+
+   The same form sets up the coach's own training. A coach who climbs
+   is an athlete with an unusual amount of say over their own plan, not
+   a different kind of record — so it is the same record, claimed by
+   the person making it, with no code to hand anybody.
    ═══════════════════════════════════════════════════════════════ */
 (function () {
   const CT = window.CT, { el, icon, motion, toast } = CT.ui, S = CT.store, dt = CT.dt;
@@ -11,10 +16,10 @@
   const DAY_LABEL = ['M','T','W','T','F','S','S'];
   const DAY_FULL  = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
-  CT.views.onboard = function () {
+  CT.views.onboard = function (opts) {
+    const self = !!(opts && opts.self);
     const form = {
-      name: '',
-      email: '',
+      name: self ? (CT.world.coach.full || '') : '',
       bodyweight: '',
       start: CT.nextMonday(),
       weeks: 8,
@@ -24,7 +29,8 @@
     };
 
     const summary = el('p', { class: 'sub' });
-    const saveBtn = el('button', { class: 'btn btn--primary', onclick: create }, [ icon('check'), 'Create client' ]);
+    const saveBtn = el('button', { class: 'btn btn--primary', onclick: create },
+      [ icon('check'), self ? 'Start my block' : 'Create client' ]);
     const phaseNote = el('p', { class: 'tiny' });
 
     /* ── a row of seven day toggles ── */
@@ -76,12 +82,7 @@
     }
 
     const nameInput = el('input', { class: 'input', type: 'text', placeholder: 'Full name',
-      oninput: e => { form.name = e.target.value; sync(); } });
-    /* The invite. Whoever signs in on this address becomes this athlete —
-       the rules check the email on their identity token, not one they
-       typed, so the link can't be claimed by anyone else. */
-    const emailInput = el('input', { class: 'input', type: 'email', placeholder: 'them@example.com',
-      autocomplete: 'off', oninput: e => { form.email = e.target.value; sync(); } });
+      value: form.name, oninput: e => { form.name = e.target.value; sync(); } });
     const bwInput = el('input', { class: 'input', type: 'number', step: 0.1, min: 20, max: 200,
       placeholder: 'Optional', oninput: e => { form.bodyweight = e.target.value; } });
     const startInput = el('input', { class: 'input', type: 'date', value: form.start,
@@ -110,7 +111,7 @@
       saveBtn.disabled = !valid;
 
       const base = t.strength.length + t.endurance.length;
-      summary.textContent = !form.name.trim() ? 'Give them a name to finish'
+      summary.textContent = !form.name.trim() ? (self ? 'Your name, to finish' : 'Give them a name to finish')
         : !t.strength.length ? 'Pick at least one strength day'
         : !t.endurance.length ? 'Pick at least one endurance day'
         : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
@@ -131,19 +132,27 @@
         note: form.note.trim()
       });
 
-      /* The record and its whole starting plan go up in one batch, so a
-         half-built athlete is never a state anyone can see. Until it
-         lands, the button says what it's doing. */
+      /* The record goes up, then its plan, then — for anyone who isn't
+         the coach themselves — the code that lets them reach it. Until
+         all of that lands, the button says what it's doing. */
+      let invite = null;
       if (CT.repo.enabled) {
         saveBtn.disabled = true;
-        summary.textContent = 'Creating ' + c.name + '…';
+        summary.textContent = self ? 'Setting up your block…' : 'Creating ' + c.name + '…';
         try {
-          const id = await CT.repo.createAthlete(c, form.email);
-          c.id = id;
+          c.id = await CT.repo.createAthlete(c, { self });
+          c.isSelf = self;
+          if (!self) {
+            invite = await CT.repo.issueInvite(c.id);
+            /* On the optimistic copy too, so the roster and the code
+               sheet both read right now rather than one snapshot later. */
+            c.invitePin = invite.pin;
+            c.inviteExpires = invite.expiresAt;
+          }
         } catch (e) {
           saveBtn.disabled = false;
-          summary.textContent = 'Couldn’t create ' + c.name;
-          toast('Couldn’t create that athlete', CT.fb.message(e));
+          summary.textContent = self ? 'Couldn’t set that up' : 'Couldn’t create ' + c.name;
+          toast(self ? 'Couldn’t set up your block' : 'Couldn’t create that athlete', CT.fb.message(e));
           return;
         }
         if (c.bodyweight && c.bodyweight.length) CT.repo.saveBodyweight(c, c.bodyweight[0]);
@@ -151,29 +160,40 @@
 
       S.addClient(c);
       CT.state.activeClient = c.id;
+
+      /* A code is the one thing here the coach has to carry out of this
+         screen and into a conversation, so it gets a screen of its own
+         rather than a toast that leaves while they're finding a pen.
+
+         Handing straight over to the next sheet rather than closing
+         first: close() animates, and its tween would land a fifth of a
+         second later and clear the host out from under the sheet that
+         replaced it. open() already closes what's there, instantly. */
+      if (invite) {
+        CT.render(false);
+        CT.views.inviteCode(c, { fresh: true });
+        return;
+      }
+
       CT.sheet.close();
       CT.render(false);
-      toast(c.name + ' is set up',
-        form.email && CT.repo.enabled
-          ? `Invited ${form.email} — the athlete is theirs when they sign in.`
-          : `${c.targets.strength} strength and ${c.targets.endurance} endurance a week, starting ${dt.short(c.block.start)}.`);
+      toast(self ? 'Your block is set up' : c.name + ' is set up',
+        `${c.targets.strength} strength and ${c.targets.endurance} endurance a week, starting ${dt.short(c.block.start)}.`);
     }
 
     CT.sheet.open({
-      eyebrow: 'New client',
-      title: 'Onboard an athlete',
-      sub: 'Four things: who they are, when the block runs, what they hang, and which days they train',
+      eyebrow: self ? 'Your training' : 'New client',
+      title: self ? 'Set up your own block' : 'Onboard an athlete',
+      sub: self
+        ? 'The same four things you set for everyone else — you just happen to be picking them for yourself'
+        : 'Four things: who they are, when the block runs, what they hang, and which days they train',
       body: el('div', { class: 'sheet__bd', style: 'gap:26px' }, [
-        section('Athlete', [
+        section(self ? 'You' : 'Athlete', [
           el('div', { class: 'formgrid' }, [
             field('Name', nameInput),
             field('Starting bodyweight', el('div', { class: 'row', style: 'gap:9px' }, [
               bwInput, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg' })
-            ]), 'They can update this any time.'),
-            CT.repo.enabled
-              ? field('Their email', emailInput,
-                  'They sign in on this address and this athlete becomes theirs. Leave it blank to keep the record to yourself for now.')
-              : null
+            ]), self ? 'You can update this any time.' : 'They can update this any time.')
           ])
         ]),
         section('Block', [
@@ -195,10 +215,12 @@
           el('p', { class: 'tiny', text: 'Set these a little under a clean max hang. Two clean sessions in a row earns +2.5 kg from there.' })
         ]),
         section('Training days', [
-          el('p', { class: 'tiny', style: 'margin-top:-4px', text: 'What you pick here becomes their weekly target.' }),
+          el('p', { class: 'tiny', style: 'margin-top:-4px',
+            text: self ? 'What you pick here becomes your weekly target.'
+                       : 'What you pick here becomes their weekly target.' }),
           ...rows
         ]),
-        section('First note', [ field('Note from the coach', noteInput) ])
+        section('First note', [ field(self ? 'Note to yourself' : 'Note from the coach', noteInput) ])
       ]),
       footer: el('div', { class: 'sheet__ft' }, [ summary, saveBtn ])
     });

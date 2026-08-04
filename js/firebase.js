@@ -52,12 +52,16 @@
     fb.fn = {
       /* auth */
       onAuthStateChanged: U.onAuthStateChanged,
+      /* An athlete never types an address or a password. The anonymous
+         account minted here is their identity, and it lives in IndexedDB
+         on their phone — which is what makes a code a thing you enter
+         once. The coach still signs in properly; theirs is the only
+         account with a name on it. */
+      signInAnon: U.signInAnonymously,
       signIn: U.signInWithEmailAndPassword,
-      signUp: U.createUserWithEmailAndPassword,
       signOut: U.signOut,
       resetPassword: U.sendPasswordResetEmail,
       updateProfile: U.updateProfile,
-      sendVerification: U.sendEmailVerification,
       /* firestore */
       collection: F.collection, doc: F.doc,
       getDoc: F.getDoc, getDocs: F.getDocs,
@@ -84,9 +88,13 @@
       'auth/wrong-password':         'Email or password not recognised.',
       'auth/user-not-found':         'Email or password not recognised.',
       'auth/too-many-requests':      'Too many attempts. Wait a minute and try again.',
-      'auth/email-already-in-use':   'There’s already an account on that email. Sign in instead.',
-      'auth/weak-password':          'Passwords need to be at least six characters.',
-      'auth/network-request-failed': 'No connection. Signing in needs one — logging sessions doesn’t.',
+      'auth/network-request-failed': 'No connection. Entering your code needs one — logging sessions doesn’t.',
+      /* Anonymous sign-in is off in the console, so athletes have no
+         identity to be given. Nothing the person at the phone can fix. */
+      'auth/operation-not-allowed':    'This app isn’t set up to let athletes in yet. Tell your coach.',
+      'auth/admin-restricted-operation': 'This app isn’t set up to let athletes in yet. Tell your coach.',
+      'invite/unknown':              'That code isn’t recognised. Codes work once, and they run out — ask your coach for a fresh one.',
+      'invite/taken':                'That code has already been used on another device. Ask your coach for a fresh one.',
       'permission-denied':           'You don’t have access to that athlete.',
       'unavailable':                 'No connection. Your work is saved here and will sync.'
     };

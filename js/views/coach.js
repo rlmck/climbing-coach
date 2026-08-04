@@ -7,36 +7,83 @@
 
   CT.views.coach = function (host) {
     const wrap = el('div', { class: 'stack', style: 'gap:14px' });
+    const roster = S.roster();
+    const mine = S.selfAthlete();
 
     wrap.appendChild(el('div', { class: 'card' }, [
       el('div', { class: 'card__hd', style: 'padding-bottom:16px' }, [
         el('div', {}, [
           el('h3', { class: 'h-card', text: 'Clients' }),
           el('p', { class: 'sub', style: 'margin-top:2px',
-            text: S.clients().length + ' athletes on active blocks' })
+            text: roster.length + ' athletes on active blocks' })
         ]),
         el('button', { class: 'card__act btn btn--primary btn--sm', onclick: () => CT.views.onboard() },
           [ icon('plus'), 'Onboard a client' ])
       ]),
-      el('div', { style: 'border-top:1px solid var(--line)' }, S.clients().length
-        ? S.clients().map(clientRow)
+      el('div', { style: 'border-top:1px solid var(--line)' }, roster.length
+        ? roster.map(clientRow)
         : [ el('div', { class: 'empty' }, [
             el('h3', { text: 'No athletes yet' }),
             el('p', { text: 'Onboard one and their block, plan and starting loads are set up in a single step.' })
           ]) ])
     ]));
 
-    S.clients().forEach(c => wrap.appendChild(targetCard(c)));
+    if (CT.repo.enabled) wrap.appendChild(ownTrainingCard(mine));
+    roster.forEach(c => wrap.appendChild(targetCard(c)));
 
     host.appendChild(wrap);
     motion.enter(wrap);
   };
+
+  /* ── the coach's own block ───────────────────────────────
+     Kept out of the roster above, because a coach isn't one of their
+     own clients — but built from the same record, so everything the
+     app already knows how to do with an athlete works here unchanged. */
+  function ownTrainingCard(mine) {
+    if (!mine) {
+      return el('section', { class: 'card' }, [
+        el('div', { class: 'card__hd' }, [
+          el('div', {}, [
+            el('h3', { class: 'h-card', text: 'Your own training' }),
+            el('p', { class: 'sub', style: 'margin-top:2px',
+              text: 'Coaches climb too. Give yourself a block and log against it like anyone else.' })
+          ]),
+          el('button', { class: 'card__act btn btn--ghost btn--sm',
+            onclick: () => CT.views.onboard({ self: true }) }, [ icon('plus'), 'Set up my block' ])
+        ]),
+        el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [
+          el('p', { class: 'tiny', text:
+            'You pick your own days, dates and starting loads — nobody is prescribing them to you. No code is involved: ' +
+            'the record is claimed by this account the moment you make it.' })
+        ])
+      ]);
+    }
+
+    const week = S.currentWeek(mine), wp = S.weekProgress(mine, week);
+    return el('section', { class: 'card' }, [
+      el('div', { class: 'card__hd' }, [
+        el('span', { class: 'client__av', style: 'width:30px;height:30px;font-size:11px', text: mine.initials }),
+        el('div', {}, [
+          el('h3', { class: 'h-card', text: 'Your own training' }),
+          el('p', { class: 'sub', style: 'margin-top:2px',
+            text: `Week ${week} of ${mine.block.weeks} · ${S.phase(mine)} · ${wp.have} of ${wp.need} this week` })
+        ]),
+        el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'Switch to it',
+          onclick: () => { S.setUser(mine.id); CT.go('dashboard'); } })
+      ]),
+      el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [
+        el('p', { class: 'tiny', text:
+          'Logging is disabled while you’re looking at someone as their coach. Switch to yourself to log your own sessions.' })
+      ])
+    ]);
+  }
 
   function clientRow(c) {
     const week = S.currentWeek(c), phase = S.phase(c);
     const last = S.lastSession(c);
     const n = S.streak(c), next = S.nextMilestone(n);
     const wp = S.weekProgress(c, week);
+    const waiting = CT.repo.enabled && !c.clientUid;
 
     return el('div', { class: 'client' }, [
       el('span', { class: 'client__av', text: c.initials }),
@@ -57,8 +104,19 @@
         el('dd', { text: last ? dt.relative(last.date) : '—' })
       ]),
       el('div', { class: 'row', style: 'gap:8px' }, [
-        wp.hit ? el('span', { class: 'chip chip--spruce', text: 'On target' })
-               : el('span', { class: 'chip', text: `${wp.need - wp.have} left` }),
+        /* An athlete who hasn't typed their code yet has no history to
+           be on target with, so the code is the more useful thing to
+           show — and it's the thing the coach is about to be asked for. */
+        waiting
+          ? el('button', { class: 'chip chip--code', title: 'Their code',
+              onclick: () => CT.views.inviteCode(c) },
+              [ c.invitePin || 'No code' ])
+          : wp.hit ? el('span', { class: 'chip chip--spruce', text: 'On target' })
+                   : el('span', { class: 'chip', text: `${wp.need - wp.have} left` }),
+        CT.repo.enabled && !waiting
+          ? el('button', { class: 'btn btn--quiet btn--sm', text: 'Access',
+              onclick: () => CT.views.inviteCode(c) })
+          : null,
         el('button', { class: 'btn btn--ghost btn--sm', text: 'Open',
           onclick: () => { CT.state.activeClient = c.id; CT.go('dashboard'); } })
       ])

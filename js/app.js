@@ -51,7 +51,10 @@
       }, [
         el('span', { class: 'who__av', text: p.initials }),
         el('span', { class: 'who__name', text: p.name }),
-        el('span', { class: 'who__role', text: p.role === 'coach' ? 'Coach' : 'Client' })
+        /* A coach who trains appears twice, and the labels are the whole
+           difference: one entry is the roster, the other is their own
+           logging. "You" beats a second "Coach" nobody can tell apart. */
+        el('span', { class: 'who__role', text: p.role === 'coach' ? 'Coach' : p.isSelf ? 'You' : 'Client' })
       ]));
     });
 
@@ -68,8 +71,7 @@
         el('p', { id: 'syncDot', class: 'rail__sync' + (CT.repo.syncing ? ' is-syncing' : '') },
           [ el('span', { class: 'rail__syncdot' }),
             el('span', { text: CT.repo.syncing ? 'Saving…' : 'All saved' }) ]),
-        el('button', { class: 'btn btn--quiet btn--sm', style: 'width:100%;justify-content:flex-start',
-          text: 'Sign out', onclick: () => CT.signOut() })
+        signOutButton()
       ]));
     }
 
@@ -81,6 +83,36 @@
       b.style.display = (!c || (type === 'pe' && !S.inPEPhase(c))) ? 'none' : '';
       b.onclick = () => CT.openLog(type, {});
     });
+  }
+
+  /* An athlete's account has no address and no password on it — this
+     device is the whole of their identity. Signing out throws it away
+     and the only way back is a fresh code from their coach, so the
+     button arms first and says what it costs. A coach can sign back in
+     whenever they like, so theirs stays a button.
+
+     Same arm-then-confirm as removing a session from a plan. */
+  function signOutButton() {
+    const anon = CT.repo.user && CT.repo.user.isAnonymous;
+    const b = el('button', { class: 'btn btn--quiet btn--sm',
+      style: 'width:100%;justify-content:flex-start', text: 'Sign out' });
+    if (!anon) { b.onclick = () => CT.signOut(); return b; }
+
+    let armed = false, timer = null;
+    b.onclick = () => {
+      if (armed) { CT.signOut(); return; }
+      armed = true;
+      b.textContent = 'Tap again — you’ll need a new code';
+      b.classList.add('is-armed');
+      motion.pop(b, .97);
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        armed = false;
+        b.textContent = 'Sign out';
+        b.classList.remove('is-armed');
+      }, 4000);
+    };
+    return b;
   }
 
   /* Phone navigation. Same routes as the rail, plus the log action that
@@ -266,9 +298,9 @@
     if (!showApp) { CT.ui.clear(authHost); build(authHost); }
   }
 
-  function showSignIn() {
+  function showSignIn(opts) {
     if (CT.sheet) CT.sheet.close(true);
-    screen('auth', host => CT.views.signin(host, {}));
+    screen('auth', host => CT.views.signin(host, opts || {}));
   }
 
   function showLoading(text) {
@@ -290,15 +322,20 @@
     if (p) {
       const ids = Object.keys(CT.world.clients);
       if (p.role === 'client') {
-        /* null, not 'coach' — an athlete waiting on an invite must not
-           fall through into the coach's screens */
+        /* null, not 'coach' — an athlete whose record their coach hasn't
+           finished must not fall through into the coach's screens */
         const mine = p.athleteId && CT.world.clients[p.athleteId] ? p.athleteId : ids[0] || null;
         CT.state.viewAs = mine;
         CT.state.activeClient = mine;
         if (CT.state.route === 'clients') CT.state.route = 'dashboard';
       } else {
         CT.state.viewAs = 'coach';
-        if (!CT.state.activeClient || !CT.world.clients[CT.state.activeClient]) CT.state.activeClient = ids[0] || null;
+        /* A coach lands on somebody they coach. Their own training is a
+           deliberate switch, not the default view. */
+        const roster = S.roster();
+        if (!CT.state.activeClient || !CT.world.clients[CT.state.activeClient]) {
+          CT.state.activeClient = (roster[0] && roster[0].id) || ids[0] || null;
+        }
         CT.state.route = ids.length ? CT.state.route : 'clients';
       }
     }
@@ -326,6 +363,73 @@
     catch (e) { toast('Couldn’t sign out', CT.fb.message(e)); }
   };
 
+  /* ── which of the three states this account is in ─────────
+     Called by the auth listener, and again by hand the moment a code is
+     spent: nothing about the *account* changed there, so Firebase has
+     no reason to fire, but everything about what it can reach did. */
+  async function onUser(user) {
+    if (!user) {
+      CT.repo.stop();
+      /* An athlete's identity is this device. There is no address to
+         type and no password to forget — the account is minted here,
+         before they've done anything, so that the code they're about to
+         enter has somewhere to attach itself. It then lives in IndexedDB
+         and is why they only enter it once.
+
+         One account per device, not per visit: a restored session skips
+         this entirely. */
+      showLoading('Opening your training…');
+      try { await CT.fb.fn.signInAnon(CT.fb.auth); }
+      catch (e) {
+        console.error('[boot] anonymous sign-in:', e);
+        showSignIn({ mode: 'code', error: CT.fb.message(e) });
+      }
+      return;                       // the listener fires again with the new account
+    }
+
+    showLoading('Loading your training…');
+    let profile = null;
+    try {
+      profile = await CT.repo.start(user);
+    } catch (e) {
+      console.error('[boot] repo start:', e);
+      toast('Couldn’t load your training', CT.fb.message(e));
+    }
+
+    /* Signed in with nowhere to land. For an athlete that means no code
+       has been spent on this device, and the code screen is both the
+       explanation and the fix. For a named account it means no coach
+       profile was ever created, which only a console can put right —
+       showing that person a keypad would send them round a loop. */
+    if (!profile) {
+      if (CT.sheet) CT.sheet.close(true);
+      screen('auth', h => user.isAnonymous
+        ? CT.views.signin(h, {})
+        : CT.views.noAccess(h, user));
+      return;
+    }
+
+    /* A profile, and nothing it can reach. Since a profile is only ever
+       written by spending a code, this means the coach has since issued
+       another one and this device is no longer the athlete it was. The
+       remedy is the new code, so ask for it — an empty dashboard would
+       just be a dead end wearing the app's clothes.
+
+       Gated on the roster having actually answered: an empty world
+       four seconds into a cold start with no signal is a slow query,
+       not a revoked athlete, and must not throw anyone out. */
+    if (profile.role === 'client' && CT.repo.rosterLoaded && !Object.keys(CT.world.clients).length) {
+      if (CT.sheet) CT.sheet.close(true);
+      screen('auth', h => CT.views.signin(h, { lost: true }));
+      return;
+    }
+
+    enterApp();
+  }
+
+  /* The sign-in screen calls this once a code has been redeemed. */
+  CT.reenter = () => onUser(CT.fb.auth.currentUser);
+
   /* ── boot ───────────────────────────────────────────────── */
   async function boot() {
     lockGestures();
@@ -347,28 +451,7 @@
 
     /* Fires on load with the restored session, and again on every sign-in
        and sign-out for the life of the tab. */
-    CT.fb.fn.onAuthStateChanged(CT.fb.auth, async user => {
-      if (!user) { CT.repo.stop(); showSignIn(); return; }
-      showLoading('Loading your training…');
-      try {
-        const profile = await CT.repo.start(user);
-        /* Signed in, but with nowhere to land: either the address hasn't
-           been confirmed yet, or no coach has set anything up on it.
-           Different problems, different screens — telling someone there's
-           no invite when there is one sends them round a loop. */
-        if (!profile) {
-          const why = CT.repo.blocked;
-          screen('auth', h => why === 'unverified'
-            ? CT.views.verifyEmail(h, user)
-            : CT.views.noInvite(h, user));
-          return;
-        }
-      } catch (e) {
-        console.error('[boot] repo start:', e);
-        toast('Couldn’t load your training', CT.fb.message(e));
-      }
-      enterApp();
-    });
+    CT.fb.fn.onAuthStateChanged(CT.fb.auth, onUser);
 
     /* The sync indicator lives in the rail, so it repaints with it. */
     CT.repo.onSync = () => { if (CT.ui.$('#syncDot')) renderRail(); };
