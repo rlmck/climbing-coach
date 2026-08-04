@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v10';
+const CACHE = 'coach-v11';
 
 /* Which build is actually running, asked for by the app and shown in the
    sidebar. "Is my phone up to date" is otherwise unanswerable from the
@@ -20,6 +20,25 @@ self.addEventListener('message', e => {
     e.ports[0].postMessage({ version: CACHE });
   }
 });
+
+/* "Network first" has to mean the network, and plain fetch() does not:
+   it goes through the browser's own HTTP cache, so a max-age on a file
+   is enough to answer the request without a single byte leaving the
+   phone — and this worker would then dutifully hand back a stale file
+   believing it had just fetched it. That is precisely what happened,
+   and no amount of relaunching shifted it, because a response already
+   stored with a week on it stays valid for a week whatever the server
+   says next.
+
+   `cache: 'no-cache'` forces a conditional request: the file is still
+   stored, still returns 304 and a few hundred bytes when nothing has
+   changed, but the server is always the one that decides. It also
+   reaches past whatever is already sitting in the cache with a long
+   expiry on it, which is the only way to undo one. */
+function fresh(req) {
+  try { return fetch(req, { cache: 'no-cache' }); }
+  catch (err) { return fetch(req); }        // older browsers: better stale than broken
+}
 
 const SHELL = [
   './',
@@ -56,8 +75,12 @@ const SHELL = [
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE)
-      /* one miss shouldn't fail the whole install */
-      .then(c => Promise.allSettled(SHELL.map(u => c.add(u))))
+      /* Through fresh() rather than cache.add(), so a worker installing
+         itself cannot seed its brand-new cache out of the browser's old
+         one. One miss shouldn't fail the whole install. */
+      .then(c => Promise.allSettled(
+        SHELL.map(u => fresh(new Request(u)).then(r => r.ok ? c.put(u, r) : null))
+      ))
       .then(() => self.skipWaiting())
   );
 });
@@ -77,7 +100,7 @@ self.addEventListener('fetch', e => {
   /* navigations: network first so a deploy shows up, shell as the fallback */
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req).catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
+      fresh(req).catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
     );
     return;
   }
@@ -106,6 +129,6 @@ self.addEventListener('fetch', e => {
 
   /* everything else: network-first, cache as the offline fallback */
   e.respondWith(
-    fetch(req).then(save).catch(() => caches.match(req))
+    fresh(req).then(save).catch(() => caches.match(req))
   );
 });
