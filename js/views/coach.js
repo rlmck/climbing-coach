@@ -186,6 +186,24 @@
 
     const summary = el('p', { class: 'tiny', text: summaryText(c) });
 
+    /* The hangboard's prescribed load, and the max it is a share of.
+       Kept next to the weekly targets because it is the other half of
+       the same question: what the week asks for, and how heavy. */
+    const basis = S.workingBasis(c);
+    const loadsRow = el('div', { class: 'target' }, [
+      el('span', { class: 'quick__dot quick__dot--s' }),
+      el('div', {}, [
+        el('p', { class: 'target__n', text: 'Working loads' }),
+        el('p', { class: 'target__d', text: basis
+          ? `${CT.fmtLoad(c.prescribed.tfd)} drag · ${CT.fmtLoad(c.prescribed.half)} half-crimp · ` +
+            `${Math.round(basis.pct * 100)}% of a ${CT.fmtLoad(basis.max.tfd)} / ${CT.fmtLoad(basis.max.half)} max`
+          : `${CT.fmtLoad(c.prescribed.tfd)} drag · ${CT.fmtLoad(c.prescribed.half)} half-crimp · ` +
+            `set directly, not worked out from a max` })
+      ]),
+      el('button', { class: 'btn btn--ghost btn--sm', style: 'margin-left:auto', text: basis ? 'Adjust' : 'Set from a max',
+        onclick: () => CT.views.workingLoads(c) })
+    ]);
+
     return el('section', { class: 'card' }, [
       el('div', { class: 'card__hd' }, [
         el('span', { class: 'client__av', style: 'width:30px;height:30px;font-size:11px', text: c.initials }),
@@ -196,7 +214,7 @@
         el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'View schedule',
           onclick: () => { S.setViewing(c.id); CT.go('schedule'); } })
       ]),
-      body,
+      body, el('div', { class: 'card__bd', style: 'padding-top:0' }, [ loadsRow ]),
       el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [ summary ])
     ]);
   }

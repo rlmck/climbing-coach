@@ -162,9 +162,20 @@
        State is replayed from the session list rather than accumulated, so
        editing or deleting an old session lands the athlete on the load they
        should actually be on. Recorded weights are never rewritten — each
-       session keeps the load it was really performed at. */
+       session keeps the load it was really performed at.
+
+       `loadsFrom` is where the replay starts. Normally that is the
+       beginning of the block, but a coach who re-tests a max and resets
+       the working loads needs the new number to actually take — and it
+       could not, because the last session's recorded weight would
+       overwrite it on the very next replay. So a reset moves the
+       starting line: sessions before that date are history, and only
+       what happens on or after it steers the load from there. */
     replay(c, excludeId) {
-      const list = S.hangSessions(c).filter(s => s.id !== excludeId);
+      const from = c.loadsFrom || null;
+      const list = S.hangSessions(c)
+        .filter(s => s.id !== excludeId)
+        .filter(s => !from || s.date >= from);
       const out = {};
       CT.GRIPS.forEach(g => {
         let weight = (c.startLoads || c.prescribed)[g.id], streak = 0;
@@ -229,9 +240,41 @@
     workingBasis(c) {
       if (!c.maxLoads || !c.refBodyweight) return null;
       const pct = c.workingPct || CT.PROTOCOL.workingPct;
-      return { pct, bodyweight: c.refBodyweight, max: c.maxLoads,
+      return { pct, bodyweight: c.refBodyweight, max: c.maxLoads, from: c.loadsFrom || null,
                loads: { tfd: CT.workingLoad(c.refBodyweight, c.maxLoads.tfd, pct),
                         half: CT.workingLoad(c.refBodyweight, c.maxLoads.half, pct) } };
+    },
+
+    /* Re-basing an athlete already mid-block: a max was tested, or the
+       loads were set before the percentage existed and are simply
+       wrong. Nothing logged is touched — the sessions keep the loads
+       they were really performed at — but the replay starts again from
+       here, so the new number is what the next session is prescribed
+       and the clean-session count begins afresh at it. */
+    setWorkingLoads(c, v) {
+      const today = dt.iso(dt.today());
+      c.maxLoads = { tfd: v.max.tfd, half: v.max.half };
+      c.refBodyweight = v.bodyweight;
+      c.workingPct = v.pct;
+      c.startLoads = { tfd: v.loads.tfd, half: v.loads.half };
+      c.loadsFrom = today;
+      S.recomputeStrength(c);
+      CT.repo.saveAthlete(c, {
+        maxLoads: c.maxLoads, refBodyweight: c.refBodyweight, workingPct: c.workingPct,
+        startLoads: c.startLoads, loadsFrom: c.loadsFrom
+      });
+      return c.prescribed;
+    },
+
+    /* A max hang is a test result, and the only way one currently gets
+       onto the record. One per day, so the date is the document id. */
+    logMaxHang(c, iso, loads) {
+      const rec = Object.assign({ date: iso }, loads);
+      const at = c.maxHang.findIndex(m => m.date === iso);
+      if (at >= 0) c.maxHang[at] = rec; else c.maxHang.push(rec);
+      c.maxHang.sort((a, b) => a.date < b.date ? -1 : 1);
+      CT.repo.saveMaxHang(c, rec);
+      return rec;
     },
 
     /* ── rest-rule guidance (advisory only, never blocking) ── */

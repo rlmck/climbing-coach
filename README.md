@@ -65,6 +65,25 @@ From there the clean-session rule owns the load. The max is kept on the
 record so the screens can say what the number came from, and lands on
 the max-hang chart as the first test.
 
+**Re-basing a block already running** — "Working loads" on the Clients
+screen, per athlete and for the coach themselves. Same control as
+onboarding: a max, a share of it, and the load that falls out. It exists
+because a max gets re-tested, and because loads set before the
+percentage existed are simply being prescribed in full — that case says
+so on the card and starts the conversation from what's prescribed now.
+
+Nothing logged is touched: every session keeps the load it was really
+performed at. What moves is where the replay starts. `loadsFrom` is the
+new starting line, and it has to be, because `startLoads` alone could
+never take: the last session's recorded weight would overwrite it on the
+very next replay. Sessions before that date are history; only what
+happens on or after it steers the load. The clean-session count begins
+afresh, which is what a load change means.
+
+A max that has *changed* is recorded as a test dated today. One that
+hasn't is the same test being reused, and inventing a second data point
+for it would be a lie about how often the athlete had been tested.
+
 **Limit bouldering** — the other half of a strength session. The strength
 log opens on a mode picker: **Hangboard** or **Limit Bouldering**. The
 limit form is one row per problem — grade, attempts, worked or sent — with
@@ -373,7 +392,10 @@ js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,
                        plan-ahead picker, and the field controls every
-                       form is built from) · onboard ·
+                       form is built from) ·
+                       loads (the max/share/working-load control, shared
+                       with onboarding, and the sheet that re-bases a
+                       block mid-flight) · onboard ·
                        cfupload (device files in, confirmed by the coach)
 js/app.js              shell, routing, user switching
 ```

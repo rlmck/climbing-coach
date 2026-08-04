@@ -99,6 +99,8 @@
       maxLoads: d.maxLoads || null,
       refBodyweight: d.refBodyweight || null,
       workingPct: d.workingPct || null,
+      /* where the load replay starts — moved by a mid-block reset */
+      loadsFrom: d.loadsFrom || null,
       /* replayed below — never read from the database, so it can never
          disagree with the sessions it is derived from */
       prescribed: Object.assign({}, d.startLoads),
@@ -494,7 +496,7 @@
   repo.saveAthlete = function (c, patch) {
     if (!repo.enabled) return;
     const allowed = ['name', 'full', 'initials', 'block', 'targets', 'template', 'startLoads',
-                     'maxLoads', 'refBodyweight', 'workingPct', 'coachNote'];
+                     'maxLoads', 'refBodyweight', 'workingPct', 'loadsFrom', 'coachNote'];
     const body = {};
     Object.keys(patch || c).forEach(k => { if (allowed.includes(k)) body[k] = (patch || c)[k]; });
     if (!Object.keys(body).length) return;
@@ -531,6 +533,7 @@
       block: client.block, targets: client.targets, template: client.template,
       startLoads: client.startLoads,
       maxLoads: client.maxLoads, refBodyweight: client.refBodyweight, workingPct: client.workingPct,
+      loadsFrom: client.loadsFrom || null,
       coachNote: client.coachNote || '',
       createdAt: serverTimestamp()
     }));
