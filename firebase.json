@@ -21,15 +21,15 @@
       "**/node_modules/**",
       "criticalforce/**"
     ],
+    "_comment": [
+      "Order matters and it is not the obvious way round: where two",
+      "rules match one file, the LAST one wins. So the broad globs go",
+      "first and the specific files go last, or sw.js quietly inherits",
+      "the hour-long cache from **/*.js — which is exactly the header",
+      "it exists to opt out of. A service worker cached for an hour",
+      "can pin someone to an old build of the app."
+    ],
     "headers": [
-      {
-        "source": "/sw.js",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
-      },
-      {
-        "source": "/index.html",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
-      },
       {
         "source": "**/*.@(js|css)",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
@@ -37,6 +37,14 @@
       {
         "source": "/assets/**",
         "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+      },
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
       }
     ]
   }
