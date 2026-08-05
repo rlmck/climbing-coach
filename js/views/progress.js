@@ -108,8 +108,29 @@
           ])
         )));
       },
-      buildTable: n => n.appendChild(table(['Date', 'Three-finger drag', 'Half-crimp'],
-        c.maxHang.slice().reverse().map(m => [dt.short(m.date), '+' + m.tfd.toFixed(1) + ' kg', '+' + m.half.toFixed(1) + ' kg'])))
+      buildTable: n => {
+        const open = date => CT.views.maxHangLog(c, { date });
+        n.appendChild(el('table', { class: 'table table--rows' }, [
+          el('thead', {}, [ el('tr', {}, [
+            el('th', { text: 'Date' }), el('th', { class: 'r', text: 'Three-finger drag' }),
+            el('th', { class: 'r', text: 'Half-crimp' }), el('th', {})
+          ]) ]),
+          el('tbody', {}, c.maxHang.slice().reverse().map(m =>
+            el('tr', { tabindex: 0, role: 'button',
+              'aria-label': `Test on ${dt.short(m.date)}. Open to edit or delete.`,
+              onclick: () => open(m.date),
+              onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(m.date); } }
+            }, [
+              el('td', { text: dt.short(m.date) }),
+              el('td', { class: 'r', text: CT.fmtLoad(m.tfd) }),
+              el('td', { class: 'r', text: CT.fmtLoad(m.half) }),
+              el('td', { class: 'r', style: 'width:28px' }, [ icon('fwd', 'histrow__chev') ])
+            ])
+          ))
+        ]));
+        n.appendChild(el('p', { class: 'tiny', style: 'margin-top:12px',
+          text: 'Tap a test to change or remove it, or to train from it.' }));
+      }
     }));
 
     /* ── critical force ───────────────────────────────────── */
@@ -340,13 +361,6 @@
     const n = el('span', { class: 'readout__n', style: 'font-size:28px', text: '0' });
     requestAnimationFrame(() => motion.count(n, 0, value, { decimals }));
     return n;
-  }
-
-  function table(heads, rows) {
-    return el('table', { class: 'table' }, [
-      el('thead', {}, [ el('tr', {}, heads.map((h, i) => el('th', { class: i ? 'r' : '', text: h }))) ]),
-      el('tbody', {}, rows.map(r => el('tr', {}, r.map((v, i) => el('td', { class: i ? 'r' : '', text: v })))))
-    ]);
   }
 
   /* one row per logged session — the way into editing anything historic */

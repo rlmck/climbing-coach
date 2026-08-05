@@ -473,6 +473,11 @@
     push(F().setDoc(ref(c.id, 'maxHang', entry.date), clean(entry)), 'that test');
   };
 
+  repo.deleteMaxHang = function (c, iso) {
+    if (!repo.enabled) return;
+    push(F().deleteDoc(ref(c.id, 'maxHang', iso)), 'that deletion');
+  };
+
   /* A critical-force test carries its raw per-rep traces, which is
      the bulk of it — around 40 KB for two hands, against a 1 MiB
      document limit. Kept whole rather than split, because the trace

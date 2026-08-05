@@ -13,7 +13,7 @@
     enabled: false,
     newId: () => 'loc_' + Math.random().toString(36).slice(2, 10),
     saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
-    saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, saveAthlete() {},
+    saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, deleteMaxHang() {}, saveAthlete() {},
     saveCFTest() {}, deleteCFTest() {},
     createAthlete: async c => c.id
   };
@@ -266,8 +266,32 @@
       return c.prescribed;
     },
 
-    /* A max hang is a test result, and the only way one currently gets
-       onto the record. One per day, so the date is the document id. */
+    /* Setting the loads by hand, with nothing behind them. Sometimes the
+       arithmetic is not the point: a finger is sore, a max is months
+       stale, or the coach simply knows what this athlete should be
+       hanging this week. The prescription is then not a share of
+       anything, so the basis goes with it rather than leaving the
+       screens quoting a percentage of a number the load no longer
+       follows from. The tests on the max-hang chart are untouched —
+       those are what was measured, this is what is being trained at. */
+    setLoadsDirect(c, loads) {
+      const today = dt.iso(dt.today());
+      c.startLoads = { tfd: loads.tfd, half: loads.half };
+      c.maxLoads = null;
+      c.workingPct = null;
+      c.refBodyweight = null;
+      c.loadsFrom = today;
+      S.recomputeStrength(c);
+      CT.repo.saveAthlete(c, {
+        startLoads: c.startLoads, maxLoads: null, workingPct: null,
+        refBodyweight: null, loadsFrom: c.loadsFrom
+      });
+      return c.prescribed;
+    },
+
+    /* A max hang is a test result. One per day, so the date is the
+       document id — re-testing on a day that already has one corrects
+       it rather than recording the same session twice. */
     logMaxHang(c, iso, loads) {
       const rec = Object.assign({ date: iso }, loads);
       const at = c.maxHang.findIndex(m => m.date === iso);
@@ -275,6 +299,12 @@
       c.maxHang.sort((a, b) => a.date < b.date ? -1 : 1);
       CT.repo.saveMaxHang(c, rec);
       return rec;
+    },
+
+    deleteMaxHang(c, iso) {
+      const at = c.maxHang.findIndex(m => m.date === iso);
+      if (at >= 0) c.maxHang.splice(at, 1);
+      CT.repo.deleteMaxHang(c, iso);
     },
 
     /* ── rest-rule guidance (advisory only, never blocking) ── */

@@ -118,7 +118,14 @@
     ]);
 
     const hangTile = el('article', { class: 'card tile' }, [
-      el('div', { class: 'tile__hd' }, [ el('p', { class: 'eyebrow', text: 'Latest max hang' }) ]),
+      el('div', { class: 'tile__hd' }, [
+        el('p', { class: 'eyebrow', text: 'Latest max hang' }),
+        el('span', { class: 'card__act row', style: 'gap:12px' }, [
+          el('button', { class: 'btn btn--quiet btn--sm', style: 'padding:0 8px',
+            'aria-label': 'Log max hang test', title: 'Log a new test',
+            onclick: () => CT.views.maxHangLog(c) }, [ icon('plus') ])
+        ])
+      ]),
       mh
         ? el('div', { style: 'display:flex;gap:26px' }, CT.GRIPS.map(g =>
             el('div', {}, [
@@ -223,6 +230,13 @@
     const wrap = el('div', { class: 'stack', style: 'gap:14px' }, [
       blockCard(c),
       tiles(c),
+      /* What the hangboard is asking for, and the way to change it.
+         The coach has this on the Clients screen; the athlete needs it
+         too, because they are the one who finds out on the wall that
+         the number is wrong. */
+      el('section', { class: 'card' }, [
+        el('div', { class: 'card__bd' }, [ CT.loadsRow(c) ])
+      ]),
       weekCard(c),
       el('div', { class: 'sec' }, [
         el('h2', { class: 'h-page', text: 'Log a session' }),
