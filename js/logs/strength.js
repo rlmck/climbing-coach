@@ -80,7 +80,14 @@
   /* ═════════════════ date bar — retro logging is first-class ═════════════════ */
   CT.dateBar = function (c, initial, onChange) {
     const todayISO = dt.iso(dt.today());
-    const min = c.block.start, max = todayISO;
+    /* A block that hasn't started yet would otherwise hand the picker a
+       floor later than its ceiling, and both the browser and the clamp
+       below resolve that the same way — by moving the date forward. So
+       a reading taken today gets filed on the opening day of a block
+       that is still a week away. Nothing that has already happened
+       belongs in the future, so the floor gives way to today. */
+    const max = todayISO;
+    const min = c.block.start < max ? c.block.start : max;
     let value = initial && initial >= min && initial <= max ? initial : todayISO;
 
     const input = el('input', { type: 'date', value, min, max,
