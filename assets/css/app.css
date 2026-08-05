@@ -775,6 +775,8 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 
 /* onboarding */
 .formsec{ display:flex; flex-direction:column; gap:14px; }
+/* the `display` above outranks the UA's [hidden] rule, so restore it here */
+.formsec[hidden]{ display:none; }
 .formsec__hd{ padding-bottom:9px; border-bottom:1px solid var(--line); }
 .dayrow{ display:grid; grid-template-columns:minmax(150px,1fr) minmax(210px,300px) auto; gap:16px; align-items:center; }
 .days{ display:flex; gap:5px; }
