@@ -68,19 +68,18 @@ the max-hang chart as the first test.
 **Re-basing a block already running** — "Working loads" on the Clients
 screen, per athlete and for the coach themselves. Same control as
 onboarding: a max, a share of it, and the load that falls out. It exists
-because a max gets re-tested, and because a coach may want a share
-other than the default for a particular athlete.
+because a max gets re-tested, because a coach may want a share other
+than the default for a particular athlete, and because athletes
+onboarded before the percentage existed have no max on record at all.
 
-Athletes onboarded before the percentage existed don't need it. Their
-loads were typed in directly and were being prescribed in full, so
-`repo.js` re-bases them on first load: what was typed is read as the
-max, the working load becomes its share, and the replay restarts from
-that day so weights already logged at the old figure can't drag it back
-up. It runs once — the write that records the max is what stops it
-happening again — and no max-hang test is invented for a number that
-came off a form on a date nobody wrote down. An athlete with no
-bodyweight on record has nothing to take a share of, so they wait, and
-the sheet still says why.
+That last case cannot be fixed automatically, and the app deliberately
+doesn't try. The old form asked for *starting hang loads* — "set these
+a little under a clean max hang" — so what is stored is already a
+working load, not a max. There is no arithmetic that recovers a max
+from it: reading those numbers as a max and taking a share of them
+prescribes a share of a share, which is how a +12.5 kg starting load
+becomes a 0 kg one. The max is a fact about the athlete that isn't in
+the database, so the sheet says so on the card and asks for it.
 
 Nothing logged is touched: every session keeps the load it was really
 performed at. What moves is where the replay starts. `loadsFrom` is the
