@@ -234,7 +234,7 @@
     },
 
     /* The working load the block opened on, and what it was derived
-       from — 80% of the total on the fingers at a recorded max. Absent
+       from — 85% of the total on the fingers at a recorded max. Absent
        for athletes onboarded before the percentage existed, whose
        starting loads were simply typed in. */
     workingBasis(c) {

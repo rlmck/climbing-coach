@@ -52,10 +52,10 @@ forward rather than being argued with.
 
 **Working loads are a share of the max, not the max.** Onboarding asks
 what the athlete can hold once — added load, 20 mm, seven seconds — and
-prescribes 80% of the *total* through the fingers. 70 kg bodyweight
-hanging +30 kg is 100 kg on the edge; 80% of that is 80 kg, which is
-+10 kg on the harness. Bodyweight is in the sum because it is on the
-edge whether or not anyone writes it down — taking 80% of the added
+prescribes 85% of the *total* through the fingers. 70 kg bodyweight
+hanging +30 kg is 100 kg on the edge; 85% of that is 85 kg, which is
++15 kg on the harness. Bodyweight is in the sum because it is on the
+edge whether or not anyone writes it down — taking 85% of the added
 weight alone would prescribe something far nearer maximal than it looks.
 Both the percentage and the resulting load are editable, and the form
 shows the arithmetic under each one. Below bodyweight is a real answer
@@ -68,9 +68,19 @@ the max-hang chart as the first test.
 **Re-basing a block already running** — "Working loads" on the Clients
 screen, per athlete and for the coach themselves. Same control as
 onboarding: a max, a share of it, and the load that falls out. It exists
-because a max gets re-tested, and because loads set before the
-percentage existed are simply being prescribed in full — that case says
-so on the card and starts the conversation from what's prescribed now.
+because a max gets re-tested, and because a coach may want a share
+other than the default for a particular athlete.
+
+Athletes onboarded before the percentage existed don't need it. Their
+loads were typed in directly and were being prescribed in full, so
+`repo.js` re-bases them on first load: what was typed is read as the
+max, the working load becomes its share, and the replay restarts from
+that day so weights already logged at the old figure can't drag it back
+up. It runs once — the write that records the max is what stops it
+happening again — and no max-hang test is invented for a number that
+came off a form on a date nobody wrote down. An athlete with no
+bodyweight on record has nothing to take a share of, so they wait, and
+the sheet still says why.
 
 Nothing logged is touched: every session keeps the load it was really
 performed at. What moves is where the replay starts. `loadsFrom` is the
@@ -154,8 +164,8 @@ it to.
 built from `CT.FORMS`. What the forms ask for:
 
 *What you climbed.* A session is "2 × 6a, then 3 × 6a+, then 4 × 5c",
-not the hardest thing in it. Routes, route 4×4s, boulder 4×4s and long
-problems all take as many grade/count rows as the session actually had,
+not the hardest thing in it. Routes, boulder 4×4s and long problems
+all take as many grade/count rows as the session actually had,
 in the order they were climbed, with a running total and the hardest
 grade underneath. Traversing and 1-on-1-off take a single grade behind
 a toggle — off by default, because most traverses have no grade anybody
@@ -343,8 +353,12 @@ stored. Ids are minted client-side so the optimistic copy and the
 document that lands are one record, never two.
 
 **Reading what's already stored.** The field schemas have moved on:
-minutes became seconds, a single grade became a list of them, and
-effort went from ten points to five. Old documents aren't rewritten —
+minutes became seconds, a single grade became a list of them, effort
+went from ten points to five, and route 4×4s were retired into Routes,
+which records the same laps with more of the truth in them — the four
+routes were each climbed once per set, so the sets fold into the counts
+and four routes over four sets reads as sixteen climbs rather than
+four. Old documents aren't rewritten —
 what someone recorded is what they recorded — so `CT.migrateSession`
 translates them once, in `repo.js`, where the world is assembled.
 Everything downstream only ever sees the current shape, and anything

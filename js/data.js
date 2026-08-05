@@ -61,18 +61,18 @@
   CT.PROTOCOL = {
     hangSec:7, repsPerGrip:3, reserveSec:2, restSec:180, increment:2.5, cleanTarget:2,
     /* A max hang is a max hang — you can do one of those, once. Training
-       happens underneath it, and 80% of the total load on the fingers is
+       happens underneath it, and 85% of the total load on the fingers is
        where this block puts it. Total, not added: the bodyweight is on
-       the edge whether or not anybody wrote it down, so taking 80% of
+       the edge whether or not anybody wrote it down, so taking 85% of
        the added weight alone would prescribe something far nearer
        maximal than it looks. */
-    workingPct: 0.8,
+    workingPct: 0.85,
     maxReps: 10
   };
 
   /* Added load for a working hang, from a max hang and the bodyweight it
      was pulled at. 70 kg bodyweight hanging +30 kg is 100 kg through the
-     fingers; 80% of that is 80 kg, which is +10 kg on the harness.
+     fingers; 85% of that is 85 kg, which is +15 kg on the harness.
 
      Negative is a real answer and not an error — it means the working
      load is below bodyweight and wants a pulley taking some off. */
@@ -123,8 +123,7 @@
       { id:'routes',     name:'Routes',       desc:'Laps on route terrain, at whatever grades you climbed' },
       { id:'traverse',   name:'Traversing',   desc:'Low-level, sustained, no rest' },
       { id:'edgepulls',  name:'Hangboard / Edge Pulls', desc:'Sub-maximal loaded pulls — board or single hand' },
-      { id:'oneonoff',   name:'1-on-1-off',   desc:'1 minute climbing, 1 minute rest' },
-      { id:'route4x4',   name:'Route 4×4s',   desc:'4 routes × 4 sets' }
+      { id:'oneonoff',   name:'1-on-1-off',   desc:'1 minute climbing, 1 minute rest' }
     ],
     pe: [
       { id:'boulder4x4', name:'Boulder 4×4s',  desc:'4 problems × 4 sets, minimal rest' },
@@ -219,7 +218,6 @@
     traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','duration',180], ['restSec','Rest','duration',180], ['grade','Grade','grade','route'], ['rpe','Effort','rpe',3] ],
     edgepulls:   [ ['style','Style','choice','edgeStyle'], ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workSec','Time per set','duration',180], ['rpe','Effort','rpe',3] ],
     oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','grade','route'], ['rpe','Effort','rpe',3] ],
-    route4x4:    [ ['climbs','The four routes','climbs','route'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
 
     boulder4x4:  [ ['climbs','The four problems','climbs','boulder'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
     wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','duration',240], ['restSec','Rest','duration',300], ['rpe','Effort','rpe',4] ],
@@ -270,11 +268,12 @@
      Reading what is already on the record.
 
      The field schemas changed shape: minutes became seconds, a single
-     grade became a list of them, and effort went from ten points to
-     five. Old sessions are not rewritten — a stored document is what
-     someone actually recorded — so they are translated on the way in
-     instead, once, where the world is assembled. Anything saved after
-     an edit lands in the new shape on its own.
+     grade became a list of them, effort went from ten points to five,
+     and route 4×4s stopped being their own thing. Old sessions are not
+     rewritten — a stored document is what someone actually recorded —
+     so they are translated on the way in instead, once, where the world
+     is assembled. Anything saved after an edit lands in the new shape
+     on its own.
      ═══════════════════════════════════════════════════════ */
   const LEGACY = {
     routes:      { minutes:{ duration:'durationSec' }, climbs:{ grade:'grade', count:'laps', set:'route' } },
@@ -324,9 +323,30 @@
     return f;
   };
 
+  /* Route 4×4s are gone: laps on route terrain are laps on route
+     terrain, and Routes already records them with more of the truth in
+     it. The four routes were each climbed once per set, so the sets
+     fold into the counts — four routes over four sets is sixteen
+     climbs, and reading it as four would understate the session that
+     was actually done. The rest between sets has nowhere to go and is
+     dropped rather than passed off as time on the wall. */
+  function retireRoute4x4(fields) {
+    const f = Object.assign({}, fields);
+    const sets = typeof f.sets === 'number' && f.sets > 0 ? f.sets : 1;
+    if (Array.isArray(f.climbs)) {
+      f.climbs = f.climbs.map(r => Object.assign({}, r, { count: (r.count || 0) * sets }));
+    }
+    delete f.sets;
+    delete f.restSec;
+    return f;
+  }
+
   CT.migrateSession = function (ses) {
     if (!ses || ses.type === 'strength' || !ses.fields) return ses;
     const fields = CT.migrateFields(ses.modality, ses.fields);
+    if (ses.modality === 'route4x4') {
+      return Object.assign({}, ses, { modality: 'routes', fields: retireRoute4x4(fields) });
+    }
     return fields === ses.fields ? ses : Object.assign({}, ses, { fields });
   };
 
@@ -636,7 +656,7 @@
       startLoads:  { tfd: input.loads.tfd,  half: input.loads.half },
       prescribed:  { tfd: input.loads.tfd,  half: input.loads.half },
       /* What the working loads were worked out from, kept so the screens
-         can say "80% of a +30 kg max at 71 kg" rather than presenting a
+         can say "85% of a +30 kg max at 71 kg" rather than presenting a
          number with no history. Not derived from again — once the block
          is running, the clean-session rule owns the load. */
       maxLoads: input.maxLoads ? { tfd: input.maxLoads.tfd, half: input.maxLoads.half } : null,

@@ -131,6 +131,47 @@
 
     CT.world.clients[athleteId] = client;
     S.recomputeStrength(client);
+    rebaseOntoWorkingPct(client);
+  }
+
+  /* ── athletes onboarded before the working percentage ─────
+     Their opening loads were typed in directly, and the app has been
+     prescribing them in full: a max hang, three times a grip, every
+     strength session. Those numbers were only ever meant to be a max,
+     so they are read as one — the max is what was typed, and the
+     working load becomes its share of the total on the fingers.
+
+     Nothing logged is touched. What moves is where the replay starts:
+     without that, the last session's recorded weight — pulled at the
+     old figure — would overwrite the new one on the very next rebuild
+     and put the athlete straight back on their max.
+
+     The write is what stops it happening twice: once `maxLoads` is on
+     the record the condition below is false, on this device and every
+     other. The local set only covers the beat between queueing that
+     write and the snapshot that reflects it. */
+  const rebased = new Set();
+  function rebaseOntoWorkingPct(c) {
+    if (!repo.enabled || c.maxLoads || rebased.has(c.id) || !c.startLoads) return;
+    if (typeof c.startLoads.tfd !== 'number' || typeof c.startLoads.half !== 'number') return;
+
+    /* A share of bodyweight plus added weight needs the bodyweight.
+       Absent, there is nothing to take a share of — so it waits, and
+       the working-loads sheet still says why in the meantime. */
+    const latest = c.bodyweight[c.bodyweight.length - 1];
+    const bw = c.refBodyweight || (latest ? latest.kg : null);
+    if (!bw) return;
+
+    const pct = CT.PROTOCOL.workingPct;
+    const max = { tfd: c.startLoads.tfd, half: c.startLoads.half };
+    const loads = { tfd: CT.workingLoad(bw, max.tfd, pct), half: CT.workingLoad(bw, max.half, pct) };
+    if (loads.tfd == null || loads.half == null) return;
+
+    /* No max-hang test goes on the chart. This max wasn't pulled today
+       — it came off the onboarding form, on a date nobody recorded —
+       and dating it today would be a lie about when they were tested. */
+    rebased.add(c.id);
+    S.setWorkingLoads(c, { bodyweight: bw, max, pct, loads });
   }
 
   function watchSub(athleteId, coll) {
