@@ -80,14 +80,25 @@
   /* ═════════════════ date bar — retro logging is first-class ═════════════════ */
   CT.dateBar = function (c, initial, onChange) {
     const todayISO = dt.iso(dt.today());
-    /* A block that hasn't started yet would otherwise hand the picker a
-       floor later than its ceiling, and both the browser and the clamp
-       below resolve that the same way — by moving the date forward. So
-       a reading taken today gets filed on the opening day of a block
-       that is still a week away. Nothing that has already happened
-       belongs in the future, so the floor gives way to today. */
+    /* A block is a plan, not a fence. It says what to aim at this week;
+       it does not get to decide which days the app will believe you
+       trained on. Sessions happen before a block opens, in the gap
+       after one closes, and on holidays in the middle of neither — and
+       a log that refuses them isn't a record of the training, it's a
+       record of the plan.
+
+       So the only thing refused here is the future, which hasn't
+       happened yet. The floor is a year back from whichever came
+       first, the block or today: far enough that nobody meets it,
+       close enough that a fumbled year doesn't file a session in 2019.
+
+       Everything logged counts the same — it replays into the loads, it
+       lands on the charts, it shows up in the history. The one thing a
+       session outside the block can't do is fill a weekly target,
+       because that week has no targets to fill. */
     const max = todayISO;
-    const min = c.block.start < max ? c.block.start : max;
+    const min = dt.addISO(c.block.start < max ? c.block.start : max, -365);
+    const outside = v => v < c.block.start || v > c.block.end;
     let value = initial && initial >= min && initial <= max ? initial : todayISO;
 
     const input = el('input', { type: 'date', value, min, max,
@@ -113,10 +124,15 @@
       [...quick.children].forEach(b => b.setAttribute('aria-pressed',
         String(value === (b.textContent === 'Today' ? todayISO : dt.addISO(todayISO, -1)))));
       CT.ui.clear(banner);
-      if (value !== todayISO) {
+      const off = outside(value);
+      if (value !== todayISO || off) {
+        const when = value === todayISO ? 'Logging for <b>today</b>.'
+          : `Logging for <b>${dt.short(value)}</b> — ${dt.relative(value)}.`;
         const b = el('div', { class: 'backdate' }, [
-          icon('clock'),
-          el('p', { html: `Logging for <b>${dt.short(value)}</b> — ${dt.relative(value)}. It lands on that day in your week.` })
+          icon(off ? 'info' : 'clock'),
+          el('p', { html: when + (off
+            ? ` That’s outside your block, so it goes on the record and into your loads like any other session — it just isn’t part of a planned week.`
+            : ' It lands on that day in your week.') })
         ]);
         banner.appendChild(b);
         motion.pop(b, .96);
@@ -129,7 +145,7 @@
         el('label', { class: 'datepick' }, [ icon('calendar'), input ]),
         quick,
         el('span', { class: 'tiny', style: 'margin-left:auto',
-          text: `Block runs ${dt.mini(min)} — ${dt.mini(c.block.end)}` })
+          text: `Block runs ${dt.mini(c.block.start)} — ${dt.mini(c.block.end)}` })
       ]),
       banner
     ]);

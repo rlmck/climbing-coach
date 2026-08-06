@@ -12,7 +12,28 @@
     const shell = el('div', { class: 'stack', style: 'gap:14px' });
     host.appendChild(shell);
 
-    let week = Math.max(1, Math.min(c.block.weeks, S.currentWeek(c) + CT.state.weekOffset));
+    /* How far the grid can walk. The block is the middle of it, not the
+       whole of it: training happens before one opens and after one
+       shuts, and a session logged on such a day has to be reachable or
+       it may as well not have been logged. So the range stretches to
+       cover everything on record and today as well, and stops there —
+       there is nothing to see in an empty week nobody can get to. */
+    function span() {
+      const dates = c.slots.map(s => s.date).concat(c.sessions.map(s => s.date));
+      const todayISO = dt.iso(dt.today());
+      const lo = dates.reduce((a, b) => (b < a ? b : a), c.block.start);
+      const hi = dates.reduce((a, b) => (b > a ? b : a), c.block.end);
+      return { first: Math.min(1, S.weekIndex(c, lo), S.weekIndex(c, todayISO)),
+               last:  Math.max(c.block.weeks, S.weekIndex(c, hi), S.weekIndex(c, todayISO)) };
+    }
+
+    /* `weekOffset` is measured from the week the athlete is actually in,
+       which after the block has ended is a week the block doesn't
+       contain — so the anchor is the honest index, not the clamped one. */
+    function here() { return S.weekIndex(c, dt.iso(dt.today())); }
+
+    const range = span();
+    let week = Math.max(range.first, Math.min(range.last, here() + CT.state.weekOffset));
     let draggables = [];
 
     function killDrag() { draggables.forEach(d => d.kill()); draggables = []; }
@@ -120,28 +141,44 @@
 
       const wkStart = S.weekStart(c, week);
       const todayISO = dt.iso(dt.today());
-      const phase = S.phaseOfWeek(c, week);
-      const prog = S.weekProgress(c, week);
-      const nudges = S.weekNudges(c, week);
+      const bounds = span();
+      /* Outside the block there is no phase to be in and no target to
+         hit, so the chips and the guidance stay away rather than
+         inventing a plan for a week that never had one. The grid
+         underneath is the same grid: what was logged is still there,
+         and a day still logs. */
+      const planned = S.inBlock(c, week);
+      const phase = planned ? S.phaseOfWeek(c, week) : null;
+      const prog = planned ? S.weekProgress(c, week) : null;
+      const nudges = planned ? S.weekNudges(c, week) : [];
 
       /* header */
       shell.appendChild(el('div', { class: 'card', style: 'padding:16px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap' }, [
         el('div', { class: 'row', style: 'gap:2px' }, [
-          navBtn('back', week <= 1, () => { week--; CT.state.weekOffset = week - S.currentWeek(c); render(); }),
-          navBtn('fwd', week >= c.block.weeks, () => { week++; CT.state.weekOffset = week - S.currentWeek(c); render(); })
+          navBtn('back', week <= bounds.first, () => { week--; CT.state.weekOffset = week - here(); render(); }),
+          navBtn('fwd', week >= bounds.last, () => { week++; CT.state.weekOffset = week - here(); render(); })
         ]),
         el('div', {}, [
-          el('h2', { class: 'h-card', text: `Week ${week} of ${c.block.weeks}` }),
+          el('h2', { class: 'h-card', text: planned ? `Week ${week} of ${c.block.weeks}`
+                                          : week < 1 ? 'Before the block' : 'After the block' }),
           el('p', { class: 'block__dates', text: `${dt.short(wkStart)} — ${dt.short(dt.addISO(wkStart, 6))}` })
         ]),
-        el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }),
-        el('span', { class: 'chip' + (prog.hit ? ' chip--ink' : ''), text: `${prog.have}/${prog.need} done` }),
+        phase ? el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }) : null,
+        prog ? el('span', { class: 'chip' + (prog.hit ? ' chip--ink' : ''), text: `${prog.have}/${prog.need} done` })
+             : el('span', { class: 'chip', text: 'No targets' }),
         el('div', { style: 'margin-left:auto;display:flex;gap:8px' }, [
-          week !== S.currentWeek(c)
+          week !== here()
             ? el('button', { class: 'btn btn--ghost btn--sm', text: 'This week',
-                onclick: () => { week = S.currentWeek(c); CT.state.weekOffset = 0; render(); } })
+                onclick: () => { week = here(); CT.state.weekOffset = 0; render(); } })
             : null
         ])
+      ]));
+
+      if (!planned) shell.appendChild(el('div', { class: 'nudge' }, [
+        icon('info'),
+        el('p', { html: week < 1
+          ? `This is before your block opened on <b>${dt.short(c.block.start)}</b>. Anything logged here counts toward your loads and your history — it just isn’t part of a planned week.`
+          : `Your block finished on <b>${dt.short(c.block.end)}</b>. You can keep logging: it all counts toward your loads and your history, there’s simply no weekly target to measure it against until a new block is set up.` })
       ]));
 
       /* nudges — soft, inline, dismissible by ignoring them */

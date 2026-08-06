@@ -108,6 +108,7 @@
         el('p', { id: 'syncDot', class: 'rail__sync' + (CT.repo.syncing ? ' is-syncing' : '') },
           [ el('span', { class: 'rail__syncdot' }),
             el('span', { text: CT.repo.syncing ? 'Saving…' : 'All saved' }) ]),
+        deviceButton(),
         signOutButton()
       ]));
     }
@@ -123,11 +124,30 @@
     });
   }
 
+  /* Because an athlete's account *is* this browser, a laptop is not the
+     same person signing in again — it is a second account, a stranger
+     to the record, and the code that let the phone in was spent the day
+     it was typed. So the way to a second screen is six more digits
+     minted from the screen that already works.
+
+     A coach needs none of this: theirs is the one account with an
+     address on it and they sign in on the laptop the ordinary way. */
+  function deviceButton() {
+    const anon = CT.repo.user && CT.repo.user.isAnonymous;
+    const c = anon && S.client();
+    if (!c) return null;
+    return el('button', { class: 'btn btn--quiet btn--sm',
+      style: 'width:100%;justify-content:flex-start', text: 'Use on another device',
+      onclick: () => { toggleRail(false); CT.views.deviceCode(c, { mine: true }); } });
+  }
+
   /* An athlete's account has no address and no password on it — this
-     device is the whole of their identity. Signing out throws it away
-     and the only way back is a fresh code from their coach, so the
-     button arms first and says what it costs. A coach can sign back in
-     whenever they like, so theirs stays a button.
+     device is the whole of their identity. Signing out throws it away,
+     and the way back is a code: a device code from another screen they
+     still hold, or a fresh one from their coach if this was the only
+     one. Either way it is not a thing they can undo by themselves in
+     the next ten seconds, so the button arms first and says so. A coach
+     can sign back in whenever they like, so theirs stays a button.
 
      Same arm-then-confirm as removing a session from a plan. */
   function signOutButton() {

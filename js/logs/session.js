@@ -359,31 +359,38 @@
   CT.views.weightLog = function (c, opts) {
     opts = opts || {};
     const editing = opts.date ? c.bodyweight.find(b => b.date === opts.date) : null;
-    const last = c.bodyweight[c.bodyweight.length - 1] || null;
+    /* Read fresh rather than captured: the list below can delete the
+       reading these lines are describing. */
+    const last = () => c.bodyweight[c.bodyweight.length - 1] || null;
+    const first = last();
     const dateBar = CT.dateBar(c, editing ? editing.date : null, () => sync());
 
     const input = el('input', { class: 'input', type: 'number', step: 0.1, min: 20, max: 200,
-      value: editing ? editing.kg.toFixed(1) : last ? last.kg.toFixed(1) : '', placeholder: '00.0',
+      value: editing ? editing.kg.toFixed(1) : first ? first.kg.toFixed(1) : '', placeholder: '00.0',
       style: 'font-size:28px;height:64px;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums',
       oninput: () => sync() });
 
     const delta = el('p', { class: 'tiny' });
+    const footNote = el('p', { class: 'sub' });
     const saveBtn = el('button', { class: 'btn btn--primary', onclick: save },
       [ icon('check'), editing ? 'Save changes' : 'Save reading' ]);
 
     function sync() {
       const v = parseFloat(input.value);
       const ok = !isNaN(v) && v >= 20 && v <= 200;
+      const prev = last();
       saveBtn.disabled = !ok;
       const existing = c.bodyweight.find(b => b.date === dateBar.get());
       delta.textContent = !ok ? 'Enter a weight between 20 and 200 kg.'
         : existing ? `Replaces the ${existing.kg.toFixed(1)} kg reading already on ${dt.short(dateBar.get())}.`
-        : last ? `${(v - last.kg) >= 0 ? '+' : ''}${(v - last.kg).toFixed(1)} kg since ${dt.short(last.date)}.`
+        : prev ? `${(v - prev.kg) >= 0 ? '+' : ''}${(v - prev.kg).toFixed(1)} kg since ${dt.short(prev.date)}.`
         : 'This becomes your first reading.';
+      footNote.textContent = prev ? `Last reading ${prev.kg.toFixed(1)} kg, ${dt.relative(prev.date)}` : 'No readings yet';
     }
 
     function save() {
       const v = parseFloat(input.value), date = dateBar.get();
+      const prev = last();
       /* moving an edited reading to a different day leaves nothing behind */
       if (editing && date !== editing.date) S.deleteBodyweight(c, editing.date);
       S.logBodyweight(c, date, +v.toFixed(1));
@@ -391,7 +398,53 @@
       CT.render(false);
       if (editing) return toast('Reading updated', dt.short(date) + ' · ' + v.toFixed(1) + ' kg');
       toast(date === dt.iso(dt.today()) ? 'Weight logged' : 'Logged for ' + dt.short(date),
-            v.toFixed(1) + ' kg' + (last ? ` · ${(v - last.kg) >= 0 ? '+' : ''}${(v - last.kg).toFixed(1)} kg since last time` : ''));
+            v.toFixed(1) + ' kg' + (prev ? ` · ${(v - prev.kg) >= 0 ? '+' : ''}${(v - prev.kg).toFixed(1)} kg since last time` : ''));
+    }
+
+    /* ── what's already on record ──
+       A number typed once and regretted — a guess at onboarding, a
+       reading in boots — sits in the trend and drags every chart that
+       reads off it. Removing one used to mean knowing to open Progress,
+       flip the bodyweight card to Table and tap a row; that path still
+       works and this is the same act, put where somebody who has just
+       realised the old number is wrong is already standing. */
+    const listHost = el('div');
+
+    function paintList() {
+      CT.ui.clear(listHost);
+      if (!c.bodyweight.length) return;
+      const all = c.bodyweight.slice().reverse();
+      const rows = all.slice(0, 8);
+
+      listHost.appendChild(el('p', { class: 'eyebrow',
+        text: all.length > rows.length ? `On record · latest ${rows.length} of ${all.length}` : 'On record' }));
+      listHost.appendChild(el('div', { class: 'cflist', style: 'margin-top:10px' }, rows.map(b => {
+        const on = !!editing && b.date === editing.date;
+        return el('div', { class: 'cflist__r' + (on ? ' is-on' : '') }, [
+          el('button', { class: 'cflist__pick', 'aria-pressed': String(on),
+            title: 'Open ' + dt.short(b.date) + ' to change it',
+            onclick: () => CT.views.weightLog(c, { date: b.date }) }, [
+            el('div', {}, [
+              el('p', { class: 'cflist__d', text: b.kg.toFixed(1) + ' kg' }),
+              el('p', { class: 'tiny', text: dt.short(b.date) })
+            ]),
+            on ? el('span', { class: 'chip chip--spruce', text: 'Editing' }) : null
+          ]),
+          CT.armButton(() => {
+            S.deleteBodyweight(c, b.date);
+            CT.render(false);
+            toast('Reading deleted', `${b.kg.toFixed(1)} kg on ${dt.short(b.date)} is off the trend.`);
+            /* Deleting the one this sheet was opened to edit leaves it
+               editing nothing, so it gets out of the way. */
+            if (on) return CT.sheet.close();
+            paintList();
+            sync();
+          }, 'Delete', 'Tap again', 'btn btn--quiet btn--sm')
+        ]);
+      })));
+      listHost.appendChild(el('p', { class: 'tiny', style: 'margin-top:10px', text:
+        'Tap a reading to change it, or delete it outright. Only the trend and the charts move — ' +
+        'your loads keep the bodyweight they were actually worked out from.' }));
     }
 
     CT.sheet.open({
@@ -406,7 +459,8 @@
             input, el('span', { class: 'readout__u', style: 'flex:none', text: 'kg' })
           ]),
           delta
-        ])
+        ]),
+        listHost
       ]),
       footer: el('div', { class: 'sheet__ft' }, [
         editing ? CT.deleteButton(() => {
@@ -414,10 +468,11 @@
           CT.sheet.close(); CT.render(false);
           toast('Reading deleted', dt.short(editing.date) + ' removed from the trend.');
         }) : null,
-        el('p', { class: 'sub', text: last ? `Last reading ${last.kg.toFixed(1)} kg, ${dt.relative(last.date)}` : 'No readings yet' }),
+        footNote,
         saveBtn
       ])
     });
+    paintList();
     sync();
   };
 

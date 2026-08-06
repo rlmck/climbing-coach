@@ -114,6 +114,10 @@
          athlete it already belongs to. */
       invitePin: d.invitePin || null,
       inviteExpires: d.inviteExpires ? d.inviteExpires.toDate() : null,
+      /* The short-lived code that lets a second screen in. Only ever
+         one outstanding, because minting another overwrites it. */
+      devicePin: d.devicePin || null,
+      deviceExpires: d.deviceExpires ? d.deviceExpires.toDate() : null,
       /* The coach's own training. Same record as everyone else's — the
          only difference is that they are both ends of it. */
       isSelf: !!(repo.user && d.coachId === repo.user.uid && d.clientUid === repo.user.uid),
@@ -236,6 +240,9 @@
      a code. Leading zeros are kept: the id is a string and '004821' is
      six digits like any other. */
   const PIN_DAYS = 30;
+  /* A device code is typed by someone holding both screens, or read out
+     over the phone while they do. It has no business outliving that. */
+  const DEVICE_MINUTES = 30;
 
   function newPin() {
     const n = new Uint32Array(1);
@@ -248,31 +255,53 @@
      and the update rule only ever allows someone to spend one — so a
      collision surfaces as a refusal and costs a retry, not a silent
      theft of somebody else's invite. */
-  repo.issueInvite = async function (athleteId) {
+  async function mint(athleteId, expiresAt, extra, point) {
     const { doc, setDoc, updateDoc, serverTimestamp } = F();
-    const expiresAt = new Date(Date.now() + PIN_DAYS * 86400000);
     let last = null;
 
     for (let attempt = 0; attempt < 6; attempt++) {
       const pin = newPin();
       try {
-        await setDoc(doc(fb().db, 'invites', pin), {
+        await setDoc(doc(fb().db, 'invites', pin), Object.assign({
           athleteId,
-          coachId: repo.user.uid,
           claimedBy: null,
           claimedAt: null,
           expiresAt,
           createdAt: serverTimestamp()
-        });
+        }, extra));
       } catch (e) {
         last = e;
         if ((e.code || '') === 'permission-denied') continue;   // taken; try another
         throw e;
       }
-      await updateDoc(doc(fb().db, 'athletes', athleteId), { invitePin: pin, inviteExpires: expiresAt });
+      await updateDoc(doc(fb().db, 'athletes', athleteId), point(pin, expiresAt));
       return { pin, expiresAt };
     }
     throw last || { code: 'invite/unknown' };
+  }
+
+  repo.issueInvite = function (athleteId) {
+    return mint(athleteId,
+      new Date(Date.now() + PIN_DAYS * 86400000),
+      { kind: 'invite', coachId: repo.user.uid },
+      (pin, expiresAt) => ({ invitePin: pin, inviteExpires: expiresAt }));
+  };
+
+  /* A second screen for a record its holder is already inside. Minted
+     from within the app rather than handed down from the coach, because
+     the person who wants their laptop to show their own training is
+     already signed in on the phone that proves they may.
+
+     It buys no reach: whoever types it ends up seeing precisely what
+     the device that minted it can already see. What it changes is how
+     many places they can see it from — which is why it stands for half
+     an hour and not a month, and why replacing a lost phone still
+     clears the lot. */
+  repo.issueDeviceCode = function (athleteId) {
+    return mint(athleteId,
+      new Date(Date.now() + DEVICE_MINUTES * 60000),
+      { kind: 'device' },
+      (pin, expiresAt) => ({ devicePin: pin, deviceExpires: expiresAt }));
   };
 
   /* A record the coach set up for their own training, said out loud.
@@ -299,12 +328,20 @@
   /* Handing out a second code. The record goes back to just the coach
      first, because the claim rule only opens for an athlete nobody
      holds. Sessions, slots and loads are untouched — this changes who
-     can reach the training, never the training. */
+     can reach the training, never the training.
+
+     Every screen goes, not only the one that was lost. An athlete who
+     had the app on a phone and a laptop is signed out of both and puts
+     them back one at a time — which is the honest reading of "start
+     again", and the only one that helps when it's the laptop you can't
+     account for. Any outstanding device code goes with them. */
   repo.resetAccess = async function (athleteId) {
     const { doc, updateDoc } = F();
     await updateDoc(doc(fb().db, 'athletes', athleteId), {
       clientUid: null,
-      members: [repo.user.uid]
+      members: [repo.user.uid],
+      devicePin: null,
+      deviceExpires: null
     });
     return repo.issueInvite(athleteId);
   };
@@ -346,7 +383,15 @@
     if (!aSnap.exists()) throw { code: 'invite/unknown' };
     const athlete = aSnap.data();
 
-    if (!athlete.clientUid) {
+    /* A device code adds a screen; it never decides whose record this
+       is. `clientUid` stays whoever first claimed it, so the app goes
+       on calling the record theirs no matter how many browsers they
+       end up reading it in. */
+    if (invite.kind === 'device') {
+      if (!(athlete.members || []).includes(user.uid)) {
+        await updateDoc(aRef, { members: arrayUnion(user.uid) });
+      }
+    } else if (!athlete.clientUid) {
       await updateDoc(aRef, {
         clientUid: user.uid,
         members: arrayUnion(user.uid),

@@ -101,9 +101,28 @@ it's kept out of the +2.5 kg progression entirely: only hangboard sessions
 replay into the athlete's loads.
 
 **Backdated logging** — every log flow opens with a date control, set to
-today, clamped to the current block. Pick a past date and a banner
-appears saying which day you're logging and how long ago it was. Maks's
-dashboard has a missed session with a "Log it late" button.
+today. Pick a past date and a banner appears saying which day you're
+logging and how long ago it was. Maks's dashboard has a missed session
+with a "Log it late" button.
+
+**A block is a plan, not a fence.** The date control used to refuse
+anything before the block opened, which made the log a record of the plan
+rather than of the training. It now refuses only the future — the floor
+is a year back, far enough that nobody meets it — so a session before a
+block starts, in the gap after one ends, or on a holiday in the middle of
+neither all go on the record. They replay into the loads, land on the
+charts and show up in the history like any other. The one thing they
+can't do is fill a weekly target, because those weeks have no targets,
+and the date bar says so when you pick such a day.
+
+The **Plan** screen walks past both ends of the block to match, as far as
+the earliest thing on record in one direction and today in the other, so
+a session logged outside it is somewhere you can actually get to. Those
+weeks read "Before the block" / "After the block" and drop the phase
+chip, the target count and the rest-day guidance rather than inventing a
+plan for a week that never had one. A block that has run out says
+**"Block finished"** on the dashboard instead of showing its final week
+for ever.
 
 **Weekly schedule** — drag a session to a different day, or focus one and
 press ← / →. Double-click to log it. Rest-day guidance appears inline
@@ -190,6 +209,22 @@ people to tell 6 from 7, which nobody does twice the same way.
 dashboard tile or the Progress screen. One reading per day; logging the
 same day again replaces it.
 
+**Every reading on record is in the same sheet**, under the field you
+type into, each one tappable to change and with a **Delete** beside it
+that arms and confirms in place. A number typed once and regretted — a
+guess at onboarding, a reading in boots — otherwise sits in the trend
+dragging every chart that reads off it, and the only way out used to be
+knowing to open Progress, flip the bodyweight card to **Table** and tap a
+row. That path still works; this is the same act, put where somebody who
+has just realised the old number is wrong is already standing.
+
+Deleting one moves the trend and the charts and nothing else. Prescribed
+loads keep the bodyweight they were actually worked out from, because
+that is stored on the athlete as `refBodyweight` at the moment the sum
+was done — a reading deleted afterwards was never what the load came
+from, and rewriting the load to pretend otherwise would be a lie about a
+hang somebody actually did.
+
 **Critical force** — the one thing on an athlete's record they can't put
 there themselves. See below.
 
@@ -256,9 +291,13 @@ Firestore. There is no third mode and no build step either way.
 
 ```
 users/{uid}                      role, name, athleteId — private to that user
-invites/{123456}                 the six digits ARE the id.
-                                 athleteId, coachId, claimedBy, expiresAt
-athletes/{id}                    members[], coachId, clientUid, invitePin,
+invites/{123456}                 the six digits ARE the id. athleteId,
+                                 claimedBy, expiresAt, and kind: 'invite'
+                                 (a coach's, 30 days) or 'device'
+                                 (another screen for someone already in,
+                                 30 minutes)
+athletes/{id}                    members[] — one entry per screen —
+                                 coachId, clientUid, invitePin, devicePin,
                                  block, targets, template, startLoads
   …/slots/{id}                   week, type, date, sessionId
   …/sessions/{id}                date, type, mode, reps|problems|fields, notes
@@ -303,6 +342,33 @@ else, and one that has lapsed are indistinguishable from outside — so a
 guess that misses teaches nothing. Thin cover for a bank; ample for a
 coach with a dozen athletes, and the alternative is a Cloud Function.
 
+A device code is the same six digits against a door that is open for
+thirty *minutes*, which is the window someone holding both screens
+actually needs. It is also the only thing that can grow `members`, and it
+can only be minted from inside the record it opens — so the reach it
+hands out is bounded by the reach the minting device already had.
+
+**A phone and a laptop** is one person on two screens, and the first code
+can't do it. Spending it stamps one account, and every account after that
+is a stranger to the record — a laptop opening the app is a *new*
+anonymous account, not the same athlete signing in again, so re-typing
+the code fails and is right to.
+
+So the app has a second, smaller code. **"Use on another device"**, in
+the sidebar under the sync line, mints six digits from a screen that
+already works; type them on the laptop's code screen and that browser
+joins the record. It lasts **30 minutes**, is spent on use, and hands out
+nothing the device that minted it couldn't already see — it only lets
+that reach travel. There is no limit on how many screens an athlete ends
+up with. The coach has the same button under **Access** on the roster,
+for when reading a code out is easier than talking somebody through
+finding it, but it is not their job: the athlete can do it themselves,
+which is the point.
+
+`members` is therefore a list of *screens*. `clientUid` is still the one
+person behind them and does not move, so the record goes on being theirs
+however many browsers read it.
+
 **Losing the phone** is the one thing that has no self-service fix, and
 that's deliberate: there is no address to send a reset link to. The coach
 opens **Access** on the roster and issues a new code, which puts the
@@ -310,6 +376,12 @@ record back to just them and opens it to whoever types the new one. Every
 session, load and note stays exactly where it is. The replaced device
 notices on next launch and says so, rather than showing an empty
 dashboard that reads like a broken app.
+
+That reset empties `members` completely — **every** screen, not only the
+missing one — and withdraws any outstanding device code. It has to: when
+it's the laptop you can't account for, signing out only the phone is the
+wrong half. Putting the other screens back is one device code each, from
+whichever one is re-claimed first.
 
 **Invite-only.** Anonymous sign-in hands an account to every device that
 opens the app. What an account can't do is *become* anything: a profile
@@ -400,7 +472,8 @@ js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
 js/charts.js           hand-rolled SVG charts
 js/views/              signin (the code pad, and the coach's way in) ·
                        dashboard · schedule · progress · coach ·
-                       invite (a code, and how to replace it)
+                       invite (a code, how to replace it, and how to
+                       add a second screen)
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
                        session (endurance, PE, bodyweight, type chooser,

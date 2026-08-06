@@ -49,6 +49,10 @@
     const cur = S.currentWeek(c), phase = S.phase(c);
     const todayISO = dt.iso(dt.today());
     const pending = c.block.start > todayISO;
+    /* A block that has run out is worth saying out loud. It used to
+       show the final week for as long as nobody set up another one,
+       which reads like a week that never ends. */
+    const done = c.block.end < todayISO;
     const left = dt.diff(c.block.end, todayISO);
     const until = dt.diff(c.block.start, todayISO);
     return el('section', { class: 'card block' }, [
@@ -56,16 +60,23 @@
         el('div', {}, [
           el('p', { class: 'eyebrow', text: 'Training block' }),
           el('h2', { class: 'block__title', style: 'margin-top:7px',
-            text: pending ? `Starts ${dt.short(c.block.start)}` : `Week ${cur} of ${c.block.weeks}` }),
+            text: pending ? `Starts ${dt.short(c.block.start)}`
+                : done ? 'Block finished'
+                : `Week ${cur} of ${c.block.weeks}` }),
           el('p', { class: 'block__dates', text: `${dt.short(c.block.start)} — ${dt.short(c.block.end)} · ` +
-            (pending ? `${until} ${until === 1 ? 'day' : 'days'} to go` : `${left} days left`) })
+            (pending ? `${until} ${until === 1 ? 'day' : 'days'} to go`
+             : done ? `ended ${dt.relative(c.block.end)}`
+             : `${left} days left`) })
         ]),
-        el('div', { class: 'block__right' }, [
-          el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }),
-          el('p', { class: 'tiny', text: phase === 'Power Endurance'
-            ? 'Sharpening phase — hold strength, add intensity.'
-            : `Power Endurance opens in week ${c.block.peFromWeek}.` })
-        ])
+        el('div', { class: 'block__right' }, done
+          ? [ el('span', { class: 'chip', text: 'No block running' }),
+              el('p', { class: 'tiny', text: c.isSelf
+                ? 'Keep logging — it all still counts. Set up a new block when you know what it’s for.'
+                : 'Keep logging — it all still counts toward your loads and your history, until your coach sets up the next one.' }) ]
+          : [ el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }),
+              el('p', { class: 'tiny', text: phase === 'Power Endurance'
+                ? 'Sharpening phase — hold strength, add intensity.'
+                : `Power Endurance opens in week ${c.block.peFromWeek}.` }) ])
       ]),
       ribbon(c)
     ]);
@@ -240,7 +251,7 @@
       weekCard(c),
       el('div', { class: 'sec' }, [
         el('h2', { class: 'h-page', text: 'Log a session' }),
-        el('span', { class: 'sec__act tiny', text: `Today, or any past date back to ${dt.mini(c.block.start)}` })
+        el('span', { class: 'sec__act tiny', text: 'Today, or any day before it — block or no block' })
       ]),
       quickLog(c),
       /* A note from your coach, unless you are your coach — then it is

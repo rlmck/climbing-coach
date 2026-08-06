@@ -22,6 +22,13 @@ rules_version = '2';
    the coach issues a new code, which is the only recovery path and the
    right one — the coach is the authority on who their athletes are.
 
+   One athlete can hold more than one screen. An account already inside
+   a record mints a *device code* — same six digits, minutes rather than
+   a month — and typing it on a laptop adds that browser's account to
+   `members` and does nothing else. So `members` is a list of screens,
+   `clientUid` is still the one person behind them, and a reset that
+   empties `members` takes every one of those screens with it.
+
    Nothing derived is stored. Prescribed loads and clean-session streaks
    are replayed from the session list on the client, so there is no
    number here that can disagree with the sessions behind it.
@@ -57,6 +64,16 @@ service cloud.firestore {
       return signedIn() && pin is string && pin != ''
         && exists(/databases/$(database)/documents/invites/$(pin))
         && get(/databases/$(database)/documents/invites/$(pin)).data.claimedBy == uid();
+    }
+
+    /* One athlete, more than one device. The first code says who you
+       are; a device code says "and this screen as well". It is minted
+       from inside the app by someone who already holds the record —
+       the athlete on their phone, or their coach — lives for minutes
+       rather than a month, and adds a uid to `members` without touching
+       anything else. Nothing about whose record it is changes. */
+    function isDeviceCode(pin) {
+      return get(/databases/$(database)/documents/invites/$(pin)).data.get('kind', '') == 'device';
     }
 
     /* ── who you are ───────────────────────────────────────────
@@ -100,12 +117,23 @@ service cloud.firestore {
       /* No enumerating the collection, ever. */
       allow list: if false;
 
-      allow create: if isCoach()
-        && pin.matches('^[0-9]{6}$')
-        && request.resource.data.coachId == uid()
+      allow create: if pin.matches('^[0-9]{6}$')
         && request.resource.data.athleteId is string
         && request.resource.data.expiresAt is timestamp
-        && request.resource.data.claimedBy == null;
+        && request.resource.data.claimedBy == null
+        && (
+          /* the coach handing an athlete their first way in */
+          (isCoach()
+            && request.resource.data.coachId == uid()
+            && request.resource.data.get('kind', 'invite') == 'invite')
+          ||
+          /* a second screen for a record somebody already holds. Whoever
+             mints it is already inside — they could read every number in
+             there on the device they are holding — so this hands out no
+             reach they don't have. It only lets them carry it. */
+          (request.resource.data.kind == 'device'
+            && isMember(request.resource.data.athleteId))
+        );
 
       /* Spending it: one write, two fields, and only while it is open.
          A second attempt by the same person is refused here and doesn't
@@ -117,8 +145,11 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['claimedBy', 'claimedAt']);
 
-      /* Withdrawing one that hasn't been handed out. */
-      allow delete: if isCoach() && resource.data.coachId == uid();
+      /* Withdrawing one that hasn't been handed out — by the coach who
+         minted it, or, for a device code, by anyone the record already
+         belongs to. */
+      allow delete: if (isCoach() && resource.data.get('coachId', '') == uid())
+        || (resource.data.get('kind', '') == 'device' && isMember(resource.data.athleteId));
     }
 
     /* ── the athlete record ────────────────────────────────── */
@@ -129,7 +160,8 @@ service cloud.firestore {
          their own profile comes from. */
       allow read: if signedIn() && (
         uid() in resource.data.members ||
-        spentInvite(resource.data.get('invitePin', ''))
+        spentInvite(resource.data.get('invitePin', '')) ||
+        spentInvite(resource.data.get('devicePin', ''))
       );
 
       /* Only a coach creates one, and only for themselves. Usually it
@@ -161,6 +193,25 @@ service cloud.firestore {
         && request.resource.data.members == resource.data.members.concat([uid()])
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['members', 'clientUid', 'claimedAt']);
+
+      /* A second device for whoever already holds this record. An
+         athlete signs in on the phone they have, mints a short-lived
+         device code, and types it on the laptop; the laptop's account
+         joins `members` and nothing else moves. `clientUid` in
+         particular does not: there is still exactly one person here,
+         and the first device they claimed on stays the one the app
+         calls theirs.
+
+         This is the only way `members` ever grows past a claim, and a
+         reset still empties it back to the coach — replacing a lost
+         phone drops every other screen with it, which is the point. */
+      allow update: if signedIn()
+        && spentInvite(resource.data.get('devicePin', ''))
+        && isDeviceCode(resource.data.get('devicePin', ''))
+        && !(uid() in resource.data.members)
+        && request.resource.data.members == resource.data.members.concat([uid()])
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['members']);
 
       /* A coach folding a record into their own training. Setting a
          block up for yourself through the ordinary onboarding form

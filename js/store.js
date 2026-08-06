@@ -69,10 +69,20 @@
     },
 
     /* ── block / phase ───────────────────────────────────── */
-    weekOf(c, iso) {
-      const n = Math.floor(dt.diff(iso, c.block.start) / 7) + 1;
-      return Math.max(1, Math.min(c.block.weeks, n));
+    /* Which week of the block a date falls in, counting past both ends:
+       0 and below is before it opened, above `weeks` is after it shut.
+       The schedule needs the honest number so it can walk to a session
+       logged outside the block and actually find it there. */
+    weekIndex(c, iso) {
+      return Math.floor(dt.diff(iso, c.block.start) / 7) + 1;
     },
+    /* The same question asked of the plan, which only has the weeks it
+       has. Everything that indexes into targets, phases or the ribbon
+       wants this one. */
+    weekOf(c, iso) {
+      return Math.max(1, Math.min(c.block.weeks, S.weekIndex(c, iso)));
+    },
+    inBlock(c, w) { return w >= 1 && w <= c.block.weeks; },
     currentWeek(c) { return S.weekOf(c, dt.iso(dt.today())); },
     phaseOfWeek(c, w) { return w >= c.block.peFromWeek ? 'Power Endurance' : 'Base'; },
     phase(c) { return S.phaseOfWeek(c, S.currentWeek(c)); },
