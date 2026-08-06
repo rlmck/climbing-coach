@@ -15,6 +15,13 @@
 
   /* ═════════════════ sheet shell ═════════════════ */
   CT.sheet = {
+    /* Whether a sheet is *meant* to be on screen, which is not the same
+       question as whether its node is still in the document — closing
+       one takes a fifth of a second to animate away. Anything deciding
+       what to do next has to read the intent, or a second tap arriving
+       mid-dismiss acts on a sheet that is already leaving. */
+    showing: false,
+
     open(opts) {
       CT.sheet.close(true);
       const scrim = CT.ui.$('#scrim'), hostEl = CT.ui.$('#sheetHost');
@@ -33,7 +40,12 @@
         opts.footer
       ]);
       hostEl.appendChild(sheet);
+      CT.sheet.showing = true;
       motion.sheetIn(scrim, sheet);
+
+      /* A sheet is the innermost thing on screen, so it is the first
+         thing the hardware back button should take away — not the app. */
+      if (CT.backGuard) CT.backGuard();
 
       scrim.onclick = () => CT.sheet.close();
       document.addEventListener('keydown', esc);
@@ -45,6 +57,7 @@
     close(instant) {
       const scrim = CT.ui.$('#scrim'), hostEl = CT.ui.$('#sheetHost');
       const sheet = hostEl.firstChild;
+      CT.sheet.showing = false;
       if (CT.sheet._esc) { document.removeEventListener('keydown', CT.sheet._esc); CT.sheet._esc = null; }
       if (!sheet) { scrim.hidden = true; hostEl.hidden = true; return; }
       const done = () => { CT.ui.clear(hostEl); scrim.hidden = true; hostEl.hidden = true; };

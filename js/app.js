@@ -11,6 +11,84 @@
     progress:  { label: 'Progress',  icon: 'chart',     title: 'Progress' }
   };
 
+  /* ═══════════════ the back button ═══════════════
+     Installed to a home screen, this app has no address bar and no tab
+     strip — the hardware back button is the only navigation control on
+     the whole device, and with nothing standing in its way it does the
+     one thing nobody wants: quits, from anywhere, including out of a
+     half-filled log sheet.
+
+     So back is given something to do. It peels one layer at a time —
+     the sheet, then the drawer, then whatever screen you wandered onto
+     — and at the bottom, on an installed app, it stops. There is
+     nowhere behind the home screen of an app you opened from an icon,
+     and pretending otherwise is how you lose a session you just
+     climbed.
+
+     **In a browser tab it does not trap you.** There, back genuinely
+     means "the page before this one", and a site that refuses to let
+     you leave is a site behaving badly. The layers still unwind; it's
+     only the floor that isn't laid, so the press that finds nothing
+     left to close goes wherever it was always going to go.
+
+     The mechanism is one spare history entry, re-armed after every
+     press rather than one entry per layer. Nothing here mirrors app
+     state into history, so nothing here can drift out of step with it:
+     each press asks the live app what the innermost open thing is, and
+     closes that. Sheets dismissed by their own X or the scrim leave the
+     spare entry sitting unused, which costs one press and never a
+     wrong screen. */
+  const PWA_MODES = ['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'];
+  function installed() {
+    return window.navigator.standalone === true ||
+      (window.matchMedia && PWA_MODES.some(m => window.matchMedia(`(display-mode: ${m})`).matches));
+  }
+
+  /* Where "up" ends. A coach's roster is the top of their app the way
+     an athlete's dashboard is the top of theirs. */
+  function homeRoute() { return S.isCoach() ? 'clients' : 'dashboard'; }
+
+  const appShowing = () => !CT.ui.$('#app').hidden;
+  /* The sheet's own flag, not its node: a sheet on its way out is still
+     in the document for a fifth of a second, and a second press landing
+     in that window must move up a level rather than close it twice. */
+  const sheetOpen  = () => !!(CT.sheet && CT.sheet.showing);
+  const railOpen   = () => CT.ui.$('#rail').classList.contains('is-open');
+
+  /* Is there anything for a press to close? Deliberately not asked on
+     an installed app, where the answer doesn't change what back does. */
+  function dismissible() {
+    return sheetOpen() || railOpen() ||
+      (appShowing() && CT.state.route !== homeRoute());
+  }
+
+  let armed = false;
+
+  function arm() {
+    if (armed) return;
+    /* Same URL, so nothing about the address changes and a reload still
+       lands on the app rather than on some invented route. */
+    try { history.pushState({ ct: 'back' }, ''); armed = true; }
+    catch (e) { /* file:// in some browsers — back simply behaves as it did */ }
+  }
+
+  /* Called after anything that opens a layer, and after every render. */
+  function backGuard() {
+    if (installed() || dismissible()) arm();
+  }
+  CT.backGuard = backGuard;
+
+  window.addEventListener('popstate', () => {
+    armed = false;                       // the spare entry has been spent
+    if (sheetOpen())            CT.sheet.close();
+    else if (railOpen())        toggleRail(false);
+    else if (appShowing() && CT.state.route !== homeRoute()) CT.go(homeRoute());
+    /* Nothing left to close. On an installed app that is the floor and
+       we simply re-arm, so the press did nothing and the app is still
+       here. In a tab we don't re-arm, and the next press leaves. */
+    backGuard();
+  });
+
   /* ── navigation ─────────────────────────────────────────── */
   CT.go = function (route) {
     if (ROUTES[route] && ROUTES[route].coachOnly && !S.isCoach()) route = 'dashboard';
@@ -213,6 +291,7 @@
     const show = open === undefined ? !rail.classList.contains('is-open') : open;
     rail.classList.toggle('is-open', show);
     scrim.hidden = !show;
+    if (show) backGuard();               // back closes the drawer before anything else
   }
   CT.toggleRail = toggleRail;
 
@@ -301,6 +380,9 @@
     renderTabs();
     renderTopbar();
     renderView(animated !== false);
+    /* Every route change passes through here, so this is the one place
+       that has to notice you're no longer on the screen back returns to. */
+    backGuard();
   }
   CT.render = render;
 
@@ -348,10 +430,7 @@
      pinch zoom and its pull-to-refresh — taking those away from a page
      someone is merely visiting would be hostile. */
   function lockGestures() {
-    const modes = ['standalone', 'fullscreen', 'minimal-ui', 'window-controls-overlay'];
-    const installed = window.navigator.standalone === true ||
-      (window.matchMedia && modes.some(m => window.matchMedia(`(display-mode: ${m})`).matches));
-    if (!installed) return;
+    if (!installed()) return;
 
     document.documentElement.classList.add('is-pwa');
 
@@ -375,6 +454,10 @@
     tabs.hidden = !showApp;
     authHost.hidden = showApp;
     if (!showApp) { CT.ui.clear(authHost); build(authHost); }
+    /* The code screen has no layers and nowhere to go back to, but an
+       installed app still shouldn't vanish because somebody's thumb
+       found the wrong button while reading six digits off a phone. */
+    backGuard();
   }
 
   function showSignIn(opts) {

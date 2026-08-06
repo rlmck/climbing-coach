@@ -493,3 +493,24 @@ Installed to a home screen, the app suppresses pinch zoom, double-tap
 zoom and pull-to-refresh — an over-scroll shouldn't reload the page
 mid-log. Opened in a browser tab it leaves all three alone; taking them
 from a page someone is merely visiting would be hostile.
+
+**The hardware back button** gets the same treatment. Installed, there
+is no address bar and no tab strip, so back is the only navigation
+control on the device — and with nothing standing in its way it quits,
+from anywhere, including out of a half-filled log sheet. So it peels one
+layer at a time: the sheet, then the drawer, then whatever screen you
+wandered onto, and at the bottom it stops. There is nowhere behind the
+home screen of an app you opened from an icon.
+
+In a browser tab it does not trap you. Back there genuinely means "the
+page before this one", and a site that refuses to let you leave is a
+site behaving badly. The layers still unwind; only the floor isn't laid.
+
+The mechanism is one spare history entry, re-armed after every press
+rather than one entry per layer. Nothing is mirrored from app state into
+history, so nothing can drift out of step with it — each press asks the
+live app what the innermost open thing is and closes that. It reads the
+sheet's own `showing` flag rather than looking for its node, because a
+sheet on its way out is in the document for another fifth of a second,
+and a quick second press has to move up a level rather than close the
+same sheet twice.
