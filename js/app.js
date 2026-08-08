@@ -191,13 +191,22 @@
       ]));
     }
 
-    /* quick logging belongs to whoever's record is on screen — which is
-       the coach's own, when that's what they're looking at */
+    /* Quick logging belongs to whoever's record is on screen — the
+       coach's own when that's what they're looking at, and the
+       athlete's when it isn't. Which of those it is gets said, because
+       the buttons are identical either way and a session filed against
+       the wrong person is a nuisance to unpick.
+
+       Power Endurance is offered whatever week the block is in. The
+       final three weeks are where a plan puts it, not a rule about
+       what an athlete is allowed to have done. */
     const c = S.client();
     CT.ui.$('.rail__log').style.display = (!S.canLog() || !c) ? 'none' : '';
+    const logHd = CT.ui.$('.rail__log .eyebrow');
+    if (logHd) logHd.textContent = S.forOther() && c ? 'Quick log · ' + c.name : 'Quick log';
     CT.ui.$$('.quick').forEach(b => {
       const type = b.dataset.log;
-      b.style.display = (!c || (type === 'pe' && !S.inPEPhase(c))) ? 'none' : '';
+      b.style.display = !c ? 'none' : '';
       b.onclick = () => CT.openLog(type, {});
     });
   }
@@ -361,7 +370,8 @@
       if (S.isCoach() && CT.state.route !== 'clients' && !S.viewingSelf()) {
         node.appendChild(el('div', { class: 'asbar', style: 'margin:0 0 16px' }, [
           el('span', { class: 'asbar__pill', text: 'Coach view' }),
-          el('span', { text: `You're looking at ${c.full}'s ${ROUTES[CT.state.route].title.toLowerCase()}. Logging is disabled here.` }),
+          el('span', { text: `You're looking at ${c.full}'s ${ROUTES[CT.state.route].title.toLowerCase()}. ` +
+                             `Anything you log here is logged as ${c.name}.` }),
           el('button', { text: 'Back to clients', onclick: () => CT.go('clients') })
         ]));
       }
@@ -393,15 +403,6 @@
       toast('No block set up yet', 'There’s nothing to log against until your coach starts one.');
       return;
     }
-    /* You log on your own record. A coach has one of those too — this
-       only ever stops them typing into somebody else's. */
-    if (!S.canLog()) {
-      const mine = S.selfAthlete();
-      toast(`This is ${c.name}’s record`, mine
-        ? 'Switch to your own training in the corner to log a session.'
-        : 'Set up your own block from the Clients screen to log your training.');
-      return;
-    }
     opts = opts || {};
     if (opts.sessionId) {                      // editing an existing session
       const ses = S.session(c, opts.sessionId);
@@ -419,9 +420,13 @@
     const now = S.streak(c);
     if (now <= streakBefore) return;
     const isMilestone = S.milestones.includes(now);
+    /* Whose week just landed. Logging for somebody else makes an
+       unattributed "Week 8 complete" a small guessing game. */
+    const who = S.forOther() ? c.name + ' · ' : '';
     setTimeout(() => {
-      if (isMilestone) milestone(now, 'weeks on target', 'Every week since ' + dt.mini(S.weekStart(c, S.currentWeek(c) - now + 1)));
-      else toast(`Week ${S.currentWeek(c)} complete`, `${now} ${now === 1 ? 'week' : 'weeks'} on target.`);
+      if (isMilestone) milestone(now, 'weeks on target',
+        who + 'Every week since ' + dt.mini(S.weekStart(c, S.currentWeek(c) - now + 1)));
+      else toast(`${who}Week ${S.currentWeek(c)} complete`, `${now} ${now === 1 ? 'week' : 'weeks'} on target.`);
     }, 700);
   };
 

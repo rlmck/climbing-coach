@@ -15,6 +15,7 @@
     saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
     saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, deleteMaxHang() {}, saveAthlete() {},
     saveCFTest() {}, deleteCFTest() {},
+    saveProfile: async () => null,
     createAthlete: async c => c.id
   };
 
@@ -50,8 +51,26 @@
       const c = S.client();
       return !!(c && c.isSelf);
     },
-    /* Logging is yours to do on your own record and nobody else's. */
-    canLog() { return !S.isCoach() || S.viewingSelf(); },
+    /* A coach may log on any record they hold, their own included.
+       Sessions happen in front of them — a hangboard session they
+       counted the reps of, a 4×4 they timed — and the athlete who did
+       it is on the wall rather than on their phone. Refusing the entry
+       didn't protect anything; it just meant the session went in late
+       or not at all.
+
+       Nothing about reach changes. A coach is already a member of every
+       record they created, and membership is the only check the sessions
+       collection has ever made, so this is the app catching up with the
+       rules rather than the rules being widened. An athlete is still
+       only ever themselves. */
+    canLog() { return !!S.client(); },
+
+    /* Writing into somebody else's record rather than your own. Every
+       confirmation this produces should say whose it was. */
+    forOther() { return S.isCoach() && !S.viewingSelf(); },
+
+    /* "your" or "Maks’s" — the possessive the log flows need. */
+    whose(c) { return S.forOther() && c ? c.name + '’s' : 'your'; },
 
     setUser(id) {
       state.viewAs = id;

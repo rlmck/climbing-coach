@@ -144,8 +144,8 @@
         const b = el('div', { class: 'backdate' }, [
           icon(off ? 'info' : 'clock'),
           el('p', { html: when + (off
-            ? ` That’s outside your block, so it goes on the record and into your loads like any other session — it just isn’t part of a planned week.`
-            : ' It lands on that day in your week.') })
+            ? ` That’s outside ${S.whose(c)} block, so it goes on the record and into ${S.whose(c)} loads like any other session — it just isn’t part of a planned week.`
+            : ` It lands on that day in ${S.whose(c)} week.`) })
         ]);
         banner.appendChild(b);
         motion.pop(b, .96);
@@ -248,14 +248,15 @@
         CT.sheet.close();
         CT.render(false);
         toast('Session deleted', mode === 'limit'
-          ? dt.short(editing.date) + ' cleared from your week.'
+          ? `${dt.short(editing.date)} cleared from ${S.whose(c)} week.`
           : 'Loads recalculated from what is left.');
       }) : null,
       summary, saveBtn
     ]);
 
     sheet = CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : 'Strength',
+      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
+             : S.forOther() ? 'Strength · ' + c.name : 'Strength',
       title: form.title,
       sub: form.sub,
       body, footer

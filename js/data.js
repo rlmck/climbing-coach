@@ -50,7 +50,11 @@
   CT.TYPE = {
     strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs or limit boulders' },
     endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity' },
-    pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic · final 3 weeks' }
+    /* The final three weeks are where a block *plans* power endurance.
+       They are not a gate on logging it: an athlete who did 4×4s in
+       week two did them, and a log that won't take the session is a
+       log that disagrees with the training. */
+    pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic capacity' }
   };
 
   CT.GRIPS = [
@@ -209,12 +213,20 @@
        choice    a named set from CT.CHOICES
        grade     one grade off a ladder, optional behind a toggle
        climbs    as many grade/count rows as the session actually had
+       metres    a distance, and blank is an answer — see below
 
      Durations are stored in seconds throughout — a field that means
      minutes in one form and seconds in the next is how a 4-minute
-     rest becomes a 4-second one. */
+     rest becomes a 4-second one.
+
+     `metres` is the one kind with no default. A route session is
+     recorded two ways and people keep one or the other: grades and
+     laps, or vertical metres off the board at the desk. Asking for
+     both and insisting on either would put a made-up number on every
+     session somebody only counted one way, so neither is required and
+     an empty box is stored as nothing rather than as zero. */
   CT.FORMS = {
-    routes:      [ ['climbs','What you climbed','climbs','route'], ['durationSec','Time on the wall','duration',75*60], ['rpe','Effort','rpe',3] ],
+    routes:      [ ['climbs','What you climbed','climbs','route'], ['metres','Distance climbed','metres',null], ['durationSec','Time on the wall','duration',75*60], ['rpe','Effort','rpe',3] ],
     traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','duration',180], ['restSec','Rest','duration',180], ['grade','Grade','grade','route'], ['rpe','Effort','rpe',3] ],
     edgepulls:   [ ['style','Style','choice','edgeStyle'], ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workSec','Time per set','duration',180], ['rpe','Effort','rpe',3] ],
     oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','grade','route'], ['rpe','Effort','rpe',3] ],
@@ -262,6 +274,14 @@
     if (h) return h + 'h' + (m ? ' ' + m + 'm' : '');
     if (m) return m + 'm' + (r ? ' ' + r + 's' : '');
     return r + 's';
+  };
+
+  /* Vertical metres, when somebody counted them. Nothing is not zero:
+     a session with no distance against it wasn't measured, and printing
+     "0 m" would say it was and that they climbed nothing. */
+  CT.fmtMetres = function (m) {
+    if (typeof m !== 'number' || !isFinite(m) || m <= 0) return null;
+    return Math.round(m) + ' m';
   };
 
   /* ═══════════════════════════════════════════════════════
@@ -535,6 +555,12 @@
           const ladder = CT.GRADES[def];
           fields[key] = rand() < 0.5 ? null : ladder[Math.floor(ladder.length * (0.3 + rand()*0.35))];
         }
+        else if (kind === 'metres') {
+          /* also optional, and generated as such — a world where every
+             session has a distance on it would never exercise the
+             screens that have to cope with one that doesn't. */
+          fields[key] = rand() < 0.45 ? null : Math.round((180 + rand() * 520) / 10) * 10;
+        }
         else if (kind === 'climbs') {
           const ladder = CT.GRADES[def];
           const base = Math.floor(ladder.length * (0.3 + rand()*0.3));
@@ -678,7 +704,7 @@
   };
 
   CT.world = {
-    coach: { id:'coach', name:'Ross', full:'Ross Lewis', initials:'RL', role:'coach' },
+    coach: { id:'coach', name:'Coach', full:'Coach', initials:'C', role:'coach' },
     clients: {}
   };
 

@@ -43,12 +43,20 @@
         t.textContent = (+v.toFixed(2)).toString();
         svg.appendChild(t);
       }
-      /* x ticks — first, middle, last */
-      const dates = [...new Set(o.series[0].points.map(p => p.x))];
-      [dates[0], dates[Math.floor((dates.length - 1) / 2)], dates[dates.length - 1]].forEach((d, i) => {
-        if (!d) return;
+      /* x ticks — first, middle, last, and only as many of those as are
+         actually different days. Two points make the middle the first
+         one over again, and one point makes all three the same date:
+         both used to stamp the same label on the same x twice, which
+         reads as a smudge rather than as an axis. */
+      const dates = [...new Set(o.series.flatMap(s => s.points.map(p => p.x)))].sort();
+      const ticks = [...new Set([0, Math.floor((dates.length - 1) / 2), dates.length - 1])]
+        .filter(i => dates[i]);
+      ticks.forEach((idx, i) => {
+        const d = dates[idx];
         const t = svgEl('text', { class: 'axis-t', x: X(dt.parse(d).getTime()), y: H - 6,
-          'text-anchor': i === 0 ? 'start' : i === 2 ? 'end' : 'middle' });
+          'text-anchor': ticks.length === 1 ? 'middle'
+                       : i === 0 ? 'start'
+                       : i === ticks.length - 1 ? 'end' : 'middle' });
         t.textContent = dt.mini(d);
         svg.appendChild(t);
       });

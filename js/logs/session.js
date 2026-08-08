@@ -150,6 +150,41 @@
     ]);
   }
 
+  /* ── a distance, if anybody counted one ──────────────────
+     The other half of "what you climbed". Some people leave the wall
+     knowing they did 2 × 6a and 3 × 6a+; some leave knowing they did
+     600 m; plenty know both and plenty only one. So this sits beside
+     the grade rows rather than instead of them, and — like them — an
+     empty box is stored as nothing, not as zero. A session with no
+     distance against it wasn't measured, which is a different fact
+     from a session where nothing was climbed. */
+  function metresControl(init, set) {
+    const input = el('input', { class: 'input', type: 'number', min: 0, step: 10,
+      placeholder: 'Leave blank if you didn’t count',
+      value: typeof init === 'number' && init > 0 ? init : '',
+      oninput: read });
+
+    const note = el('p', { class: 'tiny' });
+
+    function read() {
+      const raw = input.value.trim();
+      const v = raw === '' ? null : Math.max(0, Math.round(+raw));
+      const value = v === null || !isFinite(v) || v === 0 ? null : v;
+      note.textContent = value === null
+        ? 'Optional, and so are the grades above — record either, both or neither.'
+        : value + ' m of climbing on the record for this session.';
+      set(value);
+    }
+    read();
+
+    return el('div', { class: 'stack', style: 'gap:7px' }, [
+      el('div', { class: 'row', style: 'gap:9px' }, [
+        input, el('span', { class: 'readout__u', style: 'flex:none', text: 'm' })
+      ]),
+      note
+    ]);
+  }
+
   /* ── what you actually climbed ───────────────────────────
      "2 × 6a, then 3 × 6a+, then 4 × 5c" is a session. The hardest
      thing in it is not, and asking only for that threw away the
@@ -215,34 +250,51 @@
   }
 
   /* ═══════════════ which kind of session? ═══════════════
-     Nothing in the app opens a log without knowing what it is. */
+     Nothing in the app opens a log without knowing what it is.
+
+     All three kinds are always on offer, Power Endurance included. It
+     used to be withheld until the block reached its power-endurance
+     weeks, which quietly made the log a record of the plan: an athlete
+     who did 4×4s in week two had done them, and the app's answer was
+     that they couldn't have. The phase is still said out loud — it is
+     real, and doing anaerobic work early is worth knowing about — it
+     simply no longer refuses the entry. */
   CT.views.chooseLog = function (c, opts) {
+    const date = opts.date || dt.iso(dt.today());
+    /* By the week the session happened in, not the week the athlete is
+       in today — a backdated log belongs to the day it was climbed. */
+    const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
-    ].filter(([id]) => id !== 'pe' || S.inPEPhase(c));
+    ];
 
     const body = el('div', { class: 'sheet__bd' }, [
       el('div', { class: 'picker', style: 'grid-template-columns:1fr' }, kinds.map(([id, name, desc]) =>
         el('button', { class: 'pick', onclick: () => { CT.sheet.close(true); CT.openLog(id, opts); } }, [
           el('div', { class: 'row', style: 'gap:10px' }, [
             el('span', { class: 'quick__dot quick__dot--' + (id === 'strength' ? 's' : id === 'pe' ? 'p' : 'e') }),
-            el('p', { class: 'pick__n', text: name })
+            el('p', { class: 'pick__n', text: name }),
+            id === 'pe' && !peOpen
+              ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Outside the plan' }) : null
           ]),
           el('p', { class: 'pick__d', style: 'margin-left:17px', text: desc })
         ])
       )),
-      !S.inPEPhase(c)
-        ? el('p', { class: 'tiny', text: `Power Endurance opens in week ${c.block.peFromWeek}, the final three of the block.` })
-        : null
+      peOpen
+        ? null
+        : el('p', { class: 'tiny', text:
+            `The plan holds Power Endurance back until week ${c.block.peFromWeek}, the final three of the ` +
+            `block. Log one anyway if that is what was climbed — it goes on the record and into the ` +
+            `history like any other session, it just isn’t filling a target this week.` })
     ]);
 
     CT.sheet.open({
       eyebrow: 'New session',
       title: opts.date && opts.date !== dt.iso(dt.today())
         ? 'What did you do on ' + dt.short(opts.date) + '?'
-        : 'What are you logging?',
+        : S.forOther() ? `What did ${c.name} do?` : 'What are you logging?',
       sub: 'You can change the date on the next screen.',
       body
     });
@@ -251,11 +303,13 @@
   /* ═══════════════ planning a future day ═══════════════
      A day that hasn't happened yet can't be logged — pick the kind of
      session and it lands on the plan as a placeholder, to be logged on
-     the day itself. Power Endurance is offered by the week the date
-     falls in, not by the week the athlete is in today. */
+     the day itself. Power Endurance is offered whatever week the date
+     falls in — a coach who wants one on the calendar in week two is
+     making a decision about training, not making a mistake. The week
+     it opens is still on screen. */
   CT.views.planSlot = function (c, date) {
     if (!S.canLog()) {
-      toast(`This is ${c.name}’s plan`, 'Switch to your own training in the corner to add to your week.');
+      toast('Nothing to plan against', 'There’s no block on this record yet.');
       return;
     }
     const peOpen = S.weekOf(c, date) >= c.block.peFromWeek;
@@ -263,7 +317,7 @@
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
-    ].filter(([id]) => id !== 'pe' || peOpen);
+    ];
 
     const place = type => {
       if (!S.addPlannedSlot(c, date, type)) {
@@ -272,7 +326,8 @@
       }
       CT.sheet.close();
       CT.render(false);
-      toast(CT.TYPE[type].label + ' planned', dt.short(date) + ' · log it on the day.');
+      toast(CT.TYPE[type].label + ' planned',
+        `${dt.short(date)} · ${S.forOther() ? c.name + ' logs it on the day.' : 'log it on the day.'}`);
     };
 
     const body = el('div', { class: 'sheet__bd' }, [
@@ -280,19 +335,24 @@
         el('button', { class: 'pick', onclick: () => place(id) }, [
           el('div', { class: 'row', style: 'gap:10px' }, [
             el('span', { class: 'quick__dot quick__dot--' + (id === 'strength' ? 's' : id === 'pe' ? 'p' : 'e') }),
-            el('p', { class: 'pick__n', text: name })
+            el('p', { class: 'pick__n', text: name }),
+            id === 'pe' && !peOpen
+              ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Outside the plan' }) : null
           ]),
           el('p', { class: 'pick__d', style: 'margin-left:17px', text: desc })
         ])
       )),
       el('p', { class: 'tiny', text: peOpen
-        ? 'It joins your plan as a suggested session — drag it to another day any time.'
-        : `It joins your plan as a suggested session. Power Endurance opens in week ${c.block.peFromWeek}.` })
+        ? `It joins ${S.whose(c)} plan as a suggested session — drag it to another day any time.`
+        : `It joins ${S.whose(c)} plan as a suggested session. Power Endurance isn’t scheduled until ` +
+          `week ${c.block.peFromWeek}, so one placed here is an addition to the block rather than part of it.` })
     ]);
 
     CT.sheet.open({
       eyebrow: 'Plan ahead',
-      title: 'What are you planning for ' + dt.short(date) + '?',
+      title: S.forOther()
+        ? `What are you planning for ${c.name} on ${dt.short(date)}?`
+        : 'What are you planning for ' + dt.short(date) + '?',
       sub: dt.relative(date) + ' — nothing is logged until the day itself',
       body
     });
@@ -326,8 +386,9 @@
         : T.detail }),
       planned <= asks
         ? el('div', { class: 'nudge' }, [ icon('info'), el('p', {
-            html: `Your week asks for <b>${asks} ${T.label}</b>. Remove this and ${planned - 1} ` +
-                  `${planned - 1 === 1 ? 'is' : 'are'} left planned — you can still log one on any day.` }) ])
+            html: `${S.forOther() ? c.name + '’s' : 'Your'} week asks for <b>${asks} ${T.label}</b>. ` +
+                  `Remove this and ${planned - 1} ` +
+                  `${planned - 1 === 1 ? 'is' : 'are'} left planned — one can still be logged on any day.` }) ])
         : null,
       el('p', { class: 'tiny', text: future
         ? 'Nothing is logged against a planned session until the day itself.'
@@ -339,7 +400,7 @@
         S.removeSlot(c, slot.id);
         CT.sheet.close();
         CT.render(false);
-        toast('Removed from your plan', `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+        toast(`Removed from ${S.whose(c)} plan`, `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
       }, 'Remove from plan'),
       el('p', { class: 'sub', text: future ? 'Planned · ' + dt.relative(slot.date) : missed ? 'Not logged' : 'Due today' }),
       future ? null : el('button', { class: 'btn btn--primary',
@@ -444,13 +505,16 @@
       })));
       listHost.appendChild(el('p', { class: 'tiny', style: 'margin-top:10px', text:
         'Tap a reading to change it, or delete it outright. Only the trend and the charts move — ' +
-        'your loads keep the bodyweight they were actually worked out from.' }));
+        `${S.whose(c)} loads keep the bodyweight they were actually worked out from.` }));
     }
 
     CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : 'Bodyweight',
+      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
+             : S.forOther() ? 'Bodyweight · ' + c.name : 'Bodyweight',
       title: editing ? 'Edit reading' : 'Log a reading',
-      sub: 'Whenever you weigh in — the trend matters more than any one number',
+      sub: S.forOther()
+        ? `A reading on ${c.name}’s record — the trend matters more than any one number`
+        : 'Whenever you weigh in — the trend matters more than any one number',
       body: el('div', { class: 'sheet__bd' }, [
         dateBar,
         el('div', { class: 'field' }, [
@@ -501,13 +565,21 @@
     ));
 
     function choose(id) {
-      const first = !modality;
+      /* Is the form still folded away? Asked of the node, because the
+         thing that has to be undone is the node being hidden — and the
+         proxy that used to stand in for it ("no modality picked yet")
+         is false on the one path that needs it most. A sheet opened to
+         edit arrives with the modality already chosen, so that test
+         said "not the first time", the reveal was skipped, and the
+         whole form stayed at display:none behind a picker with nothing
+         under it. */
+      const folded = formHost.style.display === 'none';
       modality = id;
       [...picker.children].forEach((b, i) => b.setAttribute('aria-pressed', String(mods[i].id === id)));
       buildForm();
       summary.textContent = mods.find(m => m.id === id).name;
       saveBtn.disabled = false;
-      if (first) motion.collapse(formHost, true);
+      if (folded) motion.collapse(formHost, true);
       else if (motion.on) motion.enter(formHost, '.field');
     }
 
@@ -529,6 +601,7 @@
         let init = options ? options[Math.floor(options.length / 2)] : def;
         if (kind === 'climbs') init = [];
         if (kind === 'grade') init = null;                  // absent unless it was answered
+        if (kind === 'metres') init = null;                 // ditto — blank is an answer
         if (held(key) && prior[key] !== null) init = prior[key];
 
         let control, wide = false;
@@ -550,6 +623,8 @@
           control = choiceControl(def, init, set);
         } else if (kind === 'grade') {
           control = gradeControl(def, init, set);
+        } else if (kind === 'metres') {
+          control = metresControl(init, set);
         } else if (kind === 'climbs') {
           wide = true;
           control = climbsControl(def, init, set);
@@ -563,7 +638,8 @@
         }
 
         grid.appendChild(el('div', { class: 'field' + (wide ? ' span2' : '') }, [
-          el('label', { text: label + (kind === 'rpe' ? ' — RPE 1 to 5' : '') }),
+          el('label', { text: label + (kind === 'rpe' ? ' — RPE 1 to 5'
+                                     : kind === 'metres' ? ' — optional' : '') }),
           control
         ]));
       });
@@ -593,31 +669,41 @@
       S.logSession(c, Object.assign({ type }, payload));
       CT.sheet.close();
       toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date),
-            mods.find(m => m.id === modality).name + ' added to your week.');
+            mods.find(m => m.id === modality).name + ` added to ${S.whose(c)} week.`);
       CT.afterLog(c, before);
     }
 
     const body = el('div', { class: 'sheet__bd' }, [
       dateBar,
       el('div', {}, [
-        el('p', { class: 'eyebrow', style: 'margin-bottom:10px', text: 'What did you do' }),
+        el('p', { class: 'eyebrow', style: 'margin-bottom:10px',
+          text: S.forOther() ? `What ${c.name} did` : 'What did you do' }),
         picker
       ]),
       formHost
     ]);
 
+    /* Power endurance in a week the plan doesn't schedule it is a
+       session that happened, so the sheet says where it stands rather
+       than refusing it. */
+    const peEarly = type === 'pe' && S.weekIndex(c, dateBar.get()) < c.block.peFromWeek;
+
     CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : T.label,
+      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
+             : S.forOther() ? T.label + ' · ' + c.name : T.label,
       title: type === 'pe' ? 'Power Endurance' : 'Endurance',
       sub: type === 'pe'
-        ? 'Anaerobic work — scheduled in the final three weeks of the block'
+        ? (peEarly
+            ? `Anaerobic work — the plan schedules it from week ${c.block.peFromWeek}, but a session done ` +
+              `earlier still counts toward the history`
+            : 'Anaerobic work — scheduled in the final three weeks of the block')
         : 'Aerobic capacity — the volume that carries the block',
       body,
       footer: el('div', { class: 'sheet__ft' }, [
         editing ? CT.deleteButton(() => {
           S.deleteSession(c, editing.id);
           CT.sheet.close(); CT.render(false);
-          toast('Session deleted', dt.short(editing.date) + ' cleared from your week.');
+          toast('Session deleted', `${dt.short(editing.date)} cleared from ${S.whose(c)} week.`);
         }) : null,
         summary, saveBtn
       ])

@@ -28,7 +28,11 @@
           ]) ])
     ]));
 
-    if (CT.repo.enabled) wrap.appendChild(ownTrainingCard(mine));
+    if (CT.repo.enabled) {
+      const nc = nameCard();
+      if (nc) wrap.appendChild(nc);
+      wrap.appendChild(ownTrainingCard(mine));
+    }
     if (mine) wrap.appendChild(targetCard(mine));
     roster.forEach(c => wrap.appendChild(targetCard(c)));
 
@@ -74,8 +78,76 @@
       ]),
       el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [
         el('p', { class: 'tiny', text:
-          'This is your own dashboard, plan and progress — not a second account. Logging is disabled only while ' +
-          'you’re looking at somebody you coach.' })
+          'This is your own dashboard, plan and progress — not a second account. Opening somebody you coach ' +
+          'swaps the record underneath those screens; anything logged there is logged as them.' })
+      ])
+    ]);
+  }
+
+  /* ── your own name ───────────────────────────────────────
+     A coach's profile is the one account in the app with an address on
+     it, and it is created by hand in the Firestore console — which is
+     how a display name ends up being whatever was typed at three in
+     the morning, or an email local part standing in for a person.
+     Every screen that names the coach reads it, and until now there
+     was nowhere in the app to change it.
+
+     It writes `users/{uid}`, which the rules already let you edit as
+     long as the role stays put — so this can never be a way to become
+     something you aren't. Athletes are unaffected: their records carry
+     their own names and none of them is denormalised from here. */
+  function nameCard() {
+    const p = CT.repo.profile;
+    if (!p) return null;
+
+    const input = el('input', { class: 'input', type: 'text', maxlength: 40,
+      value: p.full || p.name || '', placeholder: 'Coach', oninput: sync });
+    const note = el('p', { class: 'tiny' });
+    const save = el('button', { class: 'btn btn--primary btn--sm', onclick: commit },
+      [ icon('check'), 'Save name' ]);
+
+    function typed() { return input.value.trim(); }
+
+    function sync() {
+      const v = typed();
+      save.disabled = !v || v === (p.full || p.name);
+      note.textContent = !v ? 'A name is what every screen calls you — it can’t be blank.'
+        : v === (p.full || p.name) ? `Shown as “${v}” wherever the app names you.`
+        : `Will read “${v}” — in the switcher, on the coach note your athletes see, and on this screen.`;
+    }
+
+    async function commit() {
+      const full = typed();
+      if (!full) return;
+      const patch = { name: full.split(/\s+/)[0], full, initials: CT.initialsOf(full) };
+      save.disabled = true;
+      try {
+        await CT.repo.saveProfile(patch);
+      } catch (e) {
+        save.disabled = false;
+        toast('Couldn’t save that', CT.fb.message(e));
+        return;
+      }
+      CT.render(false);
+      toast('Name updated', `The app calls you ${full} from here on.`);
+    }
+
+    sync();
+    return el('section', { class: 'card' }, [
+      el('div', { class: 'card__hd' }, [
+        el('span', { class: 'client__av', style: 'width:30px;height:30px;font-size:11px',
+                     text: CT.world.coach.initials }),
+        el('div', {}, [
+          el('h3', { class: 'h-card', text: 'Your name' }),
+          el('p', { class: 'sub', style: 'margin-top:2px', text: 'What the app calls you' })
+        ])
+      ]),
+      el('div', { class: 'card__bd' }, [
+        el('div', { class: 'field' }, [
+          el('label', { text: 'Display name' }),
+          el('div', { class: 'row', style: 'gap:10px' }, [ input, save ]),
+          note
+        ])
       ])
     ]);
   }

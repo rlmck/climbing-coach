@@ -21,7 +21,7 @@ Bottom-left of the sidebar. Three mock people, no auth:
 
 | | | |
 |---|---|---|
-| **Ross** | Coach | Roster, onboarding, per-client weekly targets, read-only view of any athlete |
+| **Coach** | Coach | Roster, onboarding, per-client weekly targets, and any athlete's screens — including logging on their behalf |
 | **Maks** | Client | Week 8 of 8, power-endurance phase, one session short of a 4-week streak |
 | **Jade** | Client | Week 2 of 8, base phase — no power-endurance sessions scheduled yet |
 
@@ -115,6 +115,18 @@ charts and show up in the history like any other. The one thing they
 can't do is fill a weekly target, because those weeks have no targets,
 and the date bar says so when you pick such a day.
 
+**The phase is the same kind of plan, and it has stopped being a fence
+too.** Power Endurance used to be withheld from every picker until the
+block reached its final three weeks — the type chooser dropped it, the
+dashboard dropped its card, the rail dropped its button. An athlete who
+did 4×4s in week two had done them, and the app's answer was that they
+couldn't have. Now all three kinds are always on offer, out of phase
+marked **"Outside the plan"** and said in a line underneath. It goes on
+the record, into the history and onto the charts like any other session;
+what it can't do is fill a target the week never set. Planning one ahead
+in an early week works the same way — a coach putting anaerobic work in
+week two is making a decision, not a mistake.
+
 The **Plan** screen walks past both ends of the block to match, as far as
 the earliest thing on record in one direction and today in the other, so
 a session logged outside it is somewhere you can actually get to. Those
@@ -167,9 +179,35 @@ account that made it, so there's no code and nothing to hand over.
 
 It is not a second user. Your Dashboard, Plan and Progress screens *are*
 that record — you log against them, you upload your own critical-force
-tests there, and the switcher has one row for you, not two. Only when
-you open somebody you coach does the coach-view bar appear and logging
-shut off; the topbar carries a **You / …** control to get back.
+tests there, and the switcher has one row for you, not two. Opening
+somebody you coach swaps the record underneath those screens and raises
+the coach-view bar to say so; the topbar carries a **You / …** control
+to get back.
+
+**Logging for somebody you coach.** The bar used to say logging was
+disabled there, and it was. That made the app worse at the thing it is
+for: sessions happen in front of a coach — a hangboard session they
+counted the reps of, a 4×4 they timed — and the athlete who did it is on
+the wall, not on their phone. So a coach logs on any record they hold,
+their own included. Nothing about reach changed, because nothing needed
+to: a coach has always been in `members`, which is the only check the
+sessions collection makes. An athlete is still only ever themselves.
+
+What that costs is one thing, and it is paid in wording. A log sheet
+opened on somebody else says whose it is in the eyebrow, the quick-log
+heading in the rail carries their name, and every toast says *Maks's
+week* rather than *your week* — because two identical sheets that file
+to different people is exactly how a session ends up on the wrong
+athlete.
+
+**Your name** — the coach's profile is created by hand in the Firestore
+console, which is how a display name ends up being an email local part
+standing in for a person. "Your name" on the Clients screen changes it,
+writing `users/{uid}` under the rule that already lets a profile edit
+itself. Athletes are untouched: their records carry their own names and
+none of them is copied from here. The role is not in what the form can
+write, and the rules refuse a change to it besides — editing yourself is
+never a way to become something you aren't.
 
 A block you set up for yourself through the ordinary "Onboard a client"
 form is an athlete nobody has claimed, so it sits in the roster waiting
@@ -188,6 +226,16 @@ in the order they were climbed, with a running total and the hardest
 grade underneath. Traversing and 1-on-1-off take a single grade behind
 a toggle — off by default, because most traverses have no grade anybody
 would defend, and off is stored as nothing rather than as a guess.
+
+*How far, if anybody counted.* Routes also take a distance in metres.
+People leave the wall knowing one of two things — that they did 2 × 6a
+and 3 × 6a+, or that they did 600 m — and plenty know both. So the
+distance sits beside the grade rows rather than instead of them, and
+**neither is required**: record either, both or neither and the session
+still saves. An empty box is stored as nothing, not as zero, because a
+session nobody measured is a different fact from a session where nothing
+was climbed — and a chart reading a made-up 0 m would be worse than one
+reading nothing at all.
 
 *Hangboard or edge pulls.* One modality, two exercises: both hands on
 a board splits the load, one hand does not, and comparing them is

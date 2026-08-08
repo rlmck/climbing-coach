@@ -605,6 +605,37 @@
     return aRef.id;
   };
 
+  /* Your own profile document — name, and the initials the avatars are
+     drawn from. Awaited rather than fired and forgotten: the caller is
+     a form with a button on it and wants to know whether the write
+     landed, and unlike a session logged in a basement there is nothing
+     useful to show until it has.
+
+     `role` is deliberately not in the allow-list, and the rules refuse
+     a change to it besides — a profile may edit itself but may never
+     promote itself. */
+  repo.saveProfile = async function (patch) {
+    if (!repo.enabled || !repo.user) return null;
+    const allowed = ['name', 'full', 'initials'];
+    const body = {};
+    allowed.forEach(k => { if (patch[k] != null) body[k] = patch[k]; });
+    if (!Object.keys(body).length) return repo.profile;
+
+    setSyncing(true);
+    try {
+      await F().updateDoc(F().doc(fb().db, 'users', repo.user.uid), clean(body));
+    } finally {
+      setSyncing(false);
+    }
+
+    /* The users collection has no listener on it — it is one document
+       read once at boot — so the copy the app is running on is updated
+       here rather than waiting for a snapshot that never comes. */
+    Object.assign(repo.profile, body);
+    if (repo.profile.role === 'coach') Object.assign(CT.world.coach, body);
+    return repo.profile;
+  };
+
   CT.initialsOf = function (name) {
     return String(name || '').trim().split(/\s+/).slice(0, 2)
       .map(w => w[0] ? w[0].toUpperCase() : '').join('') || '?';

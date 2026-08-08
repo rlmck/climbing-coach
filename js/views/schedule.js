@@ -59,7 +59,9 @@
         onEnter: els => gsap.fromTo(els, { opacity: 0, scale: .9 }, { opacity: 1, scale: 1, duration: .35 }) });
       const moved = CT.ui.$(`[data-slot="${slotId}"]`, shell);
       if (moved) { moved.focus({ preventScroll: true }); }
-      if (announce) toast('Moved to ' + dt.short(toISO), 'Your coach sees the change straight away.');
+      if (announce) toast('Moved to ' + dt.short(toISO), S.forOther()
+        ? c.name + ' sees the change straight away.'
+        : 'Your coach sees the change straight away.');
     }
 
     function slotNode(slot) {
@@ -174,11 +176,16 @@
         ])
       ]));
 
+      /* "your" or "Maksym’s" — a coach reading a client's plan is not
+         reading their own, and a line that says otherwise is one more
+         chance to log against the wrong person. */
+      const whose = S.whose(c);
+      const Whose = whose === 'your' ? 'Your' : whose;
       if (!planned) shell.appendChild(el('div', { class: 'nudge' }, [
         icon('info'),
         el('p', { html: week < 1
-          ? `This is before your block opened on <b>${dt.short(c.block.start)}</b>. Anything logged here counts toward your loads and your history — it just isn’t part of a planned week.`
-          : `Your block finished on <b>${dt.short(c.block.end)}</b>. You can keep logging: it all counts toward your loads and your history, there’s simply no weekly target to measure it against until a new block is set up.` })
+          ? `This is before ${whose} block opened on <b>${dt.short(c.block.start)}</b>. Anything logged here counts toward ${whose} loads and ${whose} history — it just isn’t part of a planned week.`
+          : `${Whose} block finished on <b>${dt.short(c.block.end)}</b>. Logging can carry on: it all counts toward ${whose} loads and ${whose} history, there’s simply no weekly target to measure it against until a new block is set up.` })
       ]));
 
       /* nudges — soft, inline, dismissible by ignoring them */

@@ -209,7 +209,8 @@
         el('div', { class: 'empty' }, [ el('h3', { text: 'Nothing scheduled this week' }) ])
       ]),
       !S.inPEPhase(c) ? el('p', { class: 'tiny', style: 'padding:13px 20px;border-top:1px solid var(--line)',
-        text: `Power Endurance sessions are held back until week ${c.block.peFromWeek} — the final 3 weeks of the block.` }) : null
+        text: `The plan holds Power Endurance back until week ${c.block.peFromWeek} — the final 3 weeks of the block. ` +
+              `One done sooner can still be logged; it just isn’t part of this week’s target.` }) : null
     ]);
   }
 
@@ -228,11 +229,15 @@
       el('p', { class: 'tiny', style: 'margin-top:4px', text: sub })
     ]);
 
+    /* All three, whatever week the block is in. Power endurance done
+       before the plan asks for it is still power endurance done. */
     const cards = [
       b('strength', 'Strength', 'Max hangs or limit bouldering'),
-      b('endurance', 'Endurance', 'Routes, traversing, edge pulls…')
+      b('endurance', 'Endurance', 'Routes, traversing, edge pulls…'),
+      b('pe', 'Power Endurance', S.inPEPhase(c)
+        ? '4×4s, wall crawls, repeaters'
+        : `4×4s, wall crawls, repeaters — outside the plan until week ${c.block.peFromWeek}`)
     ];
-    if (S.inPEPhase(c)) cards.push(b('pe', 'Power Endurance', '4×4s, wall crawls, repeaters'));
 
     return el('div', { class: 'grid', style: `grid-template-columns:repeat(${cards.length},1fr)` }, cards);
   }
@@ -250,7 +255,7 @@
       ]),
       weekCard(c),
       el('div', { class: 'sec' }, [
-        el('h2', { class: 'h-page', text: 'Log a session' }),
+        el('h2', { class: 'h-page', text: S.forOther() ? 'Log a session for ' + c.name : 'Log a session' }),
         el('span', { class: 'sec__act tiny', text: 'Today, or any day before it — block or no block' })
       ]),
       quickLog(c),
@@ -305,6 +310,7 @@
       const s = CT.climbs.short(f.climbs, climbSpec[3]);
       if (s) bits.push(s);
     }
+    if (f.metres) bits.push(CT.fmtMetres(f.metres));
     if (f.grip) bits.push(CT.choiceName('grip', f.grip));
     if (f.grade) bits.push(f.grade);
     if (f.load) bits.push(f.load + ' kg');
