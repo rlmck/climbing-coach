@@ -71,11 +71,26 @@
     renderTimer = setTimeout(() => { if (CT.render) CT.render(false); }, 40);
   }
 
-  function setSyncing(v) {
-    if (repo.syncing === v) return;
-    repo.syncing = v;
-    if (repo.onSync) repo.onSync(v);
+  /* Is anything still on its way to the server? Two sources answer, and
+     the indicator is on if either says so.
+
+     `inFlight` counts the writes we fired and are still holding a
+     promise for — a count rather than a flag, because two saves overlap
+     all the time (log a session, then change a name) and whichever was
+     acknowledged first used to turn the indicator off for both.
+
+     `queued` is Firestore's own view of the athlete documents it has
+     not yet flushed, which is the only thing that sees the writes that
+     don't go through push() at all — onboarding's batch among them. */
+  let inFlight = 0, queued = false;
+  function paintSync() {
+    const on = inFlight > 0 || queued;
+    if (repo.syncing === on) return;
+    repo.syncing = on;
+    if (repo.onSync) repo.onSync(on);
   }
+  function syncCount(d) { inFlight = Math.max(0, inFlight + d); paintSync(); }
+  function syncQueued(v) { queued = !!v; paintSync(); }
 
   /* One athlete document plus its five subcollections, assembled into
      the shape every selector in store.js already expects. */
@@ -143,7 +158,10 @@
       const c = repo._cache.get(athleteId);
       if (!c) return;
       c[coll] = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
-      if (snap.metadata.hasPendingWrites) setSyncing(true);
+      /* Nothing to report here: every write into a subcollection came
+         from push(), which is already counting it — and a signal that
+         only ever turned the indicator *on* could never turn it off
+         again, since the acknowledging snapshot looks identical. */
       rebuild(athleteId);
       scheduleRender();
     }, err => console.warn('[repo] ' + coll + ' listener:', err.code || err.message));
@@ -202,7 +220,7 @@
          rolled back. */
       [...repo._cache.keys()].forEach(id => { if (!seen.has(id)) unwatchAthlete(id); });
 
-      setSyncing(snap.metadata.hasPendingWrites);
+      syncQueued(snap.metadata.hasPendingWrites);
       /* "The roster has answered", as distinct from "the roster is
          empty" — the boot gives up waiting after four seconds, and the
          difference between those two decides whether an athlete with
@@ -464,11 +482,11 @@
      means the write was refused, not delayed, and that is worth saying
      out loud. */
   function push(promise, what) {
-    setSyncing(true);
+    syncCount(1);
     promise
-      .then(() => setSyncing(false))
+      .then(() => syncCount(-1))
       .catch(err => {
-        setSyncing(false);
+        syncCount(-1);
         console.error('[repo] ' + what + ':', err);
         if (CT.ui) CT.ui.toast('Couldn’t save ' + what, fb().message(err));
       });
@@ -606,33 +624,42 @@
   };
 
   /* Your own profile document — name, and the initials the avatars are
-     drawn from. Awaited rather than fired and forgotten: the caller is
-     a form with a button on it and wants to know whether the write
-     landed, and unlike a session logged in a basement there is nothing
-     useful to show until it has.
+     drawn from. Fired and forgotten like every other write, for the
+     reason set out over push(): a promise that settles on a server
+     acknowledgement doesn't settle at all in a basement, and a Save
+     button waiting on one is a button that never comes back. A refusal
+     is still a refusal and still says so.
 
      `role` is deliberately not in the allow-list, and the rules refuse
      a change to it besides — a profile may edit itself but may never
      promote itself. */
-  repo.saveProfile = async function (patch) {
-    if (!repo.enabled || !repo.user) return null;
+  repo.saveProfile = function (patch) {
+    if (!repo.enabled || !repo.user || !repo.profile) return null;
     const allowed = ['name', 'full', 'initials'];
     const body = {};
     allowed.forEach(k => { if (patch[k] != null) body[k] = patch[k]; });
     if (!Object.keys(body).length) return repo.profile;
 
-    setSyncing(true);
-    try {
-      await F().updateDoc(F().doc(fb().db, 'users', repo.user.uid), clean(body));
-    } finally {
-      setSyncing(false);
-    }
+    push(F().updateDoc(F().doc(fb().db, 'users', repo.user.uid), clean(body)), 'your name');
 
     /* The users collection has no listener on it — it is one document
        read once at boot — so the copy the app is running on is updated
        here rather than waiting for a snapshot that never comes. */
     Object.assign(repo.profile, body);
-    if (repo.profile.role === 'coach') Object.assign(CT.world.coach, body);
+    if (repo.profile.role !== 'coach') return repo.profile;
+    Object.assign(CT.world.coach, body);
+
+    /* A coach who trains carries the same name twice: once on the
+       profile, once on the athlete record their own training lives in.
+       That record is where the roster, the switcher and every avatar
+       beside their own block read it from, so a profile renamed without
+       it leaves one person under two names on a single screen. This one
+       does have a listener, and it will paint the change back. */
+    const mine = CT.store.selfAthlete();
+    if (mine) {
+      Object.assign(mine, body);
+      repo.saveAthlete(mine, body);
+    }
     return repo.profile;
   };
 

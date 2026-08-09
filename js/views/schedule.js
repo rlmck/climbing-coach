@@ -59,8 +59,13 @@
         onEnter: els => gsap.fromTo(els, { opacity: 0, scale: .9 }, { opacity: 1, scale: 1, duration: .35 }) });
       const moved = CT.ui.$(`[data-slot="${slotId}"]`, shell);
       if (moved) { moved.focus({ preventScroll: true }); }
-      if (announce) toast('Moved to ' + dt.short(toISO), S.forOther()
+      /* Three states, not two: a coach moving something on a client's
+         plan, an athlete moving something on their own — and a coach
+         moving something on their own, who is the top of the chain and
+         has no coach to be told about it. */
+      if (announce) toast('Moved to ' + dt.short(toISO), S.forOther(c)
         ? c.name + ' sees the change straight away.'
+        : S.isCoach() ? 'Your own plan — nobody else to tell.'
         : 'Your coach sees the change straight away.');
     }
 
@@ -179,8 +184,7 @@
       /* "your" or "Maksym’s" — a coach reading a client's plan is not
          reading their own, and a line that says otherwise is one more
          chance to log against the wrong person. */
-      const whose = S.whose(c);
-      const Whose = whose === 'your' ? 'Your' : whose;
+      const whose = S.whose(c), Whose = S.Whose(c);
       if (!planned) shell.appendChild(el('div', { class: 'nudge' }, [
         icon('info'),
         el('p', { html: week < 1

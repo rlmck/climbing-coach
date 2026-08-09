@@ -194,20 +194,38 @@ to: a coach has always been in `members`, which is the only check the
 sessions collection makes. An athlete is still only ever themselves.
 
 What that costs is one thing, and it is paid in wording. A log sheet
-opened on somebody else says whose it is in the eyebrow, the quick-log
-heading in the rail carries their name, and every toast says *Maks's
-week* rather than *your week* — because two identical sheets that file
-to different people is exactly how a session ends up on the wrong
-athlete.
+opened on somebody else says whose it is in the eyebrow — editing
+included, since an edit sheet arrives pre-filled and looking right — the
+quick-log heading in the rail carries their name, and every toast says
+*Maks's week* rather than *your week*, because two identical sheets that
+file to different people is exactly how a session ends up on the wrong
+athlete. Attribution is asked of the record the sheet was handed, not of
+whatever the navigation last selected; the two are usually the same and
+the Clients screen is where they aren't.
+
+The one place a log isn't offered is that screen. The roster shows every
+athlete and singles out none of them, so the record `activeClient`
+happens to be holding there has never been said out loud — a `+` on it
+would file against somebody the coach can't see. Everywhere else the
+record is named on screen, and the button is honest.
 
 **Your name** — the coach's profile is created by hand in the Firestore
 console, which is how a display name ends up being an email local part
 standing in for a person. "Your name" on the Clients screen changes it,
 writing `users/{uid}` under the rule that already lets a profile edit
-itself. Athletes are untouched: their records carry their own names and
-none of them is copied from here. The role is not in what the form can
-write, and the rules refuse a change to it besides — editing yourself is
-never a way to become something you aren't.
+itself. Your clients are untouched: their records carry their own names
+and none of them is copied from here. Your *own* athlete record is
+patched with it, because it holds a second copy of your name — the
+roster, the switcher and every avatar beside your own block read it from
+there, and renaming one without the other leaves one person under two
+names on a single screen. The role is not in what the form can write,
+and the rules refuse a change to it besides — editing yourself is never
+a way to become something you aren't.
+
+The write is queued, not awaited. A promise that settles on a server
+acknowledgement doesn't settle at all in a basement, and a Save button
+waiting on one is a button that never comes back; the name is the app's
+from the moment it is typed, and a refusal arrives as its own toast.
 
 A block you set up for yourself through the ordinary "Onboard a client"
 form is an athlete nobody has claimed, so it sits in the roster waiting

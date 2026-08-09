@@ -161,15 +161,16 @@
   function metresControl(init, set) {
     const input = el('input', { class: 'input', type: 'number', min: 0, step: 10,
       placeholder: 'Leave blank if you didn’t count',
-      value: typeof init === 'number' && init > 0 ? init : '',
+      value: CT.metres(init) || '',
       oninput: read });
 
     const note = el('p', { class: 'tiny' });
 
     function read() {
-      const raw = input.value.trim();
-      const v = raw === '' ? null : Math.max(0, Math.round(+raw));
-      const value = v === null || !isFinite(v) || v === 0 ? null : v;
+      /* One normaliser, shared with the line that prints it back — the
+         rule that blank is not zero has to mean the same thing in both
+         places or a distance can be stored that can never be shown. */
+      const value = CT.metres(+input.value);
       note.textContent = value === null
         ? 'Optional, and so are the grades above — record either, both or neither.'
         : value + ' m of climbing on the record for this session.';
@@ -290,11 +291,18 @@
             `history like any other session, it just isn’t filling a target this week.` })
     ]);
 
+    /* Which day and whose are separate questions, and asking the first
+       one first used to swallow the answer to the second. The dated
+       path is the one reached by tapping a past day on somebody's
+       calendar — the likeliest place in the app to file against the
+       wrong athlete, and the only way into this sheet carrying a date. */
+    const backdated = opts.date && opts.date !== dt.iso(dt.today());
+    const who = S.forOther(c) ? c.name : 'you';
     CT.sheet.open({
-      eyebrow: 'New session',
-      title: opts.date && opts.date !== dt.iso(dt.today())
-        ? 'What did you do on ' + dt.short(opts.date) + '?'
-        : S.forOther() ? `What did ${c.name} do?` : 'What are you logging?',
+      eyebrow: S.forOther(c) ? 'New session · ' + c.name : 'New session',
+      title: backdated ? `What did ${who} do on ${dt.short(opts.date)}?`
+           : S.forOther(c) ? `What did ${c.name} do?`
+           : 'What are you logging?',
       sub: 'You can change the date on the next screen.',
       body
     });
@@ -308,11 +316,17 @@
      making a decision about training, not making a mistake. The week
      it opens is still on screen. */
   CT.views.planSlot = function (c, date) {
-    if (!S.canLog()) {
+    /* The block, because the block is what the next line reads. A
+       record can briefly exist without one — onboarding writes the
+       athlete and its plan as two steps — and the guard that used to
+       stand here tested something else entirely while naming this. */
+    if (!c || !c.block) {
       toast('Nothing to plan against', 'There’s no block on this record yet.');
       return;
     }
-    const peOpen = S.weekOf(c, date) >= c.block.peFromWeek;
+    /* The true week, not the week clamped into the plan: a day past the
+       end of the block is outside it, not in its final week. */
+    const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
@@ -327,7 +341,7 @@
       CT.sheet.close();
       CT.render(false);
       toast(CT.TYPE[type].label + ' planned',
-        `${dt.short(date)} · ${S.forOther() ? c.name + ' logs it on the day.' : 'log it on the day.'}`);
+        `${dt.short(date)} · ${S.forOther(c) ? c.name + ' logs it on the day.' : 'log it on the day.'}`);
     };
 
     const body = el('div', { class: 'sheet__bd' }, [
@@ -350,7 +364,7 @@
 
     CT.sheet.open({
       eyebrow: 'Plan ahead',
-      title: S.forOther()
+      title: S.forOther(c)
         ? `What are you planning for ${c.name} on ${dt.short(date)}?`
         : 'What are you planning for ' + dt.short(date) + '?',
       sub: dt.relative(date) + ' — nothing is logged until the day itself',
@@ -386,7 +400,7 @@
         : T.detail }),
       planned <= asks
         ? el('div', { class: 'nudge' }, [ icon('info'), el('p', {
-            html: `${S.forOther() ? c.name + '’s' : 'Your'} week asks for <b>${asks} ${T.label}</b>. ` +
+            html: `${S.Whose(c)} week asks for <b>${asks} ${T.label}</b>. ` +
                   `Remove this and ${planned - 1} ` +
                   `${planned - 1 === 1 ? 'is' : 'are'} left planned — one can still be logged on any day.` }) ])
         : null,
@@ -445,21 +459,22 @@
       delta.textContent = !ok ? 'Enter a weight between 20 and 200 kg.'
         : existing ? `Replaces the ${existing.kg.toFixed(1)} kg reading already on ${dt.short(dateBar.get())}.`
         : prev ? `${(v - prev.kg) >= 0 ? '+' : ''}${(v - prev.kg).toFixed(1)} kg since ${dt.short(prev.date)}.`
-        : 'This becomes your first reading.';
+        : `This becomes ${S.whose(c)} first reading.`;
       footNote.textContent = prev ? `Last reading ${prev.kg.toFixed(1)} kg, ${dt.relative(prev.date)}` : 'No readings yet';
     }
 
     function save() {
       const v = parseFloat(input.value), date = dateBar.get();
       const prev = last();
+      const who = S.forOther(c) ? c.name + ' · ' : '';
       /* moving an edited reading to a different day leaves nothing behind */
       if (editing && date !== editing.date) S.deleteBodyweight(c, editing.date);
       S.logBodyweight(c, date, +v.toFixed(1));
       CT.sheet.close();
       CT.render(false);
-      if (editing) return toast('Reading updated', dt.short(date) + ' · ' + v.toFixed(1) + ' kg');
+      if (editing) return toast('Reading updated', who + dt.short(date) + ' · ' + v.toFixed(1) + ' kg');
       toast(date === dt.iso(dt.today()) ? 'Weight logged' : 'Logged for ' + dt.short(date),
-            v.toFixed(1) + ' kg' + (prev ? ` · ${(v - prev.kg) >= 0 ? '+' : ''}${(v - prev.kg).toFixed(1)} kg since last time` : ''));
+            who + v.toFixed(1) + ' kg' + (prev ? ` · ${(v - prev.kg) >= 0 ? '+' : ''}${(v - prev.kg).toFixed(1)} kg since last time` : ''));
     }
 
     /* ── what's already on record ──
@@ -494,7 +509,8 @@
           CT.armButton(() => {
             S.deleteBodyweight(c, b.date);
             CT.render(false);
-            toast('Reading deleted', `${b.kg.toFixed(1)} kg on ${dt.short(b.date)} is off the trend.`);
+            toast('Reading deleted',
+              `${S.forOther(c) ? c.name + ' · ' : ''}${b.kg.toFixed(1)} kg on ${dt.short(b.date)} is off the trend.`);
             /* Deleting the one this sheet was opened to edit leaves it
                editing nothing, so it gets out of the way. */
             if (on) return CT.sheet.close();
@@ -509,10 +525,9 @@
     }
 
     CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
-             : S.forOther() ? 'Bodyweight · ' + c.name : 'Bodyweight',
+      eyebrow: CT.logEyebrow(c, 'Bodyweight', editing),
       title: editing ? 'Edit reading' : 'Log a reading',
-      sub: S.forOther()
+      sub: S.forOther(c)
         ? `A reading on ${c.name}’s record — the trend matters more than any one number`
         : 'Whenever you weigh in — the trend matters more than any one number',
       body: el('div', { class: 'sheet__bd' }, [
@@ -530,7 +545,8 @@
         editing ? CT.deleteButton(() => {
           S.deleteBodyweight(c, editing.date);
           CT.sheet.close(); CT.render(false);
-          toast('Reading deleted', dt.short(editing.date) + ' removed from the trend.');
+          toast('Reading deleted',
+            `${S.forOther(c) ? c.name + ' · ' : ''}${dt.short(editing.date)} removed from the trend.`);
         }) : null,
         footNote,
         saveBtn
@@ -548,7 +564,8 @@
     let modality = editing ? editing.modality : opts.modality || null;
     const values = {};
 
-    const dateBar = CT.dateBar(c, editing ? editing.date : opts.date);
+    let sheet = null;
+    const dateBar = CT.dateBar(c, editing ? editing.date : opts.date, () => syncPhase());
     const formHost = el('div', { style: 'display:none' });
     const saveBtn = el('button', { class: 'btn btn--primary', disabled: true, onclick: save },
       [ icon('check'), editing ? 'Save changes' : 'Save session' ]);
@@ -658,10 +675,12 @@
       const payload = { date, modality, fields: Object.assign({}, values),
                         notes: notesEl ? notesEl.value.trim() : '' };
 
+      const who = S.forOther(c) ? c.name + ' · ' : '';
+
       if (editing) {
         S.updateSession(c, editing.id, payload);
         CT.sheet.close(); CT.render(false);
-        toast('Session updated', dt.short(date) + ' · ' + mods.find(m => m.id === modality).name);
+        toast('Session updated', who + dt.short(date) + ' · ' + mods.find(m => m.id === modality).name);
         return;
       }
 
@@ -677,7 +696,7 @@
       dateBar,
       el('div', {}, [
         el('p', { class: 'eyebrow', style: 'margin-bottom:10px',
-          text: S.forOther() ? `What ${c.name} did` : 'What did you do' }),
+          text: S.forOther(c) ? `What ${c.name} did` : 'What did you do' }),
         picker
       ]),
       formHost
@@ -685,19 +704,26 @@
 
     /* Power endurance in a week the plan doesn't schedule it is a
        session that happened, so the sheet says where it stands rather
-       than refusing it. */
-    const peEarly = type === 'pe' && S.weekIndex(c, dateBar.get()) < c.block.peFromWeek;
+       than refusing it — and says it about the date on the bar, which
+       is still being edited. Read once at open, the line went on
+       insisting a session was in phase after it had been backdated out
+       of one, and the other way round. */
+    function phaseSub() {
+      if (type !== 'pe') return 'Aerobic capacity — the volume that carries the block';
+      return S.weekIndex(c, dateBar.get()) < c.block.peFromWeek
+        ? `Anaerobic work — the plan schedules it from week ${c.block.peFromWeek}, but a session done ` +
+          `earlier still counts toward the history`
+        : 'Anaerobic work — scheduled in the final three weeks of the block';
+    }
+    function syncPhase() {
+      const n = sheet && CT.ui.$('.sheet__sub', sheet);
+      if (n) n.textContent = phaseSub();
+    }
 
-    CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
-             : S.forOther() ? T.label + ' · ' + c.name : T.label,
+    sheet = CT.sheet.open({
+      eyebrow: CT.logEyebrow(c, T.label, editing),
       title: type === 'pe' ? 'Power Endurance' : 'Endurance',
-      sub: type === 'pe'
-        ? (peEarly
-            ? `Anaerobic work — the plan schedules it from week ${c.block.peFromWeek}, but a session done ` +
-              `earlier still counts toward the history`
-            : 'Anaerobic work — scheduled in the final three weeks of the block')
-        : 'Aerobic capacity — the volume that carries the block',
+      sub: phaseSub(),
       body,
       footer: el('div', { class: 'sheet__ft' }, [
         editing ? CT.deleteButton(() => {

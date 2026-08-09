@@ -255,7 +255,7 @@
       ]),
       weekCard(c),
       el('div', { class: 'sec' }, [
-        el('h2', { class: 'h-page', text: S.forOther() ? 'Log a session for ' + c.name : 'Log a session' }),
+        el('h2', { class: 'h-page', text: S.forOther(c) ? 'Log a session for ' + c.name : 'Log a session' }),
         el('span', { class: 'sec__act tiny', text: 'Today, or any day before it — block or no block' })
       ]),
       quickLog(c),

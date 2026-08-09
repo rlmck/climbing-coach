@@ -278,10 +278,22 @@
 
   /* Vertical metres, when somebody counted them. Nothing is not zero:
      a session with no distance against it wasn't measured, and printing
-     "0 m" would say it was and that they climbed nothing. */
+     "0 m" would say it was and that they climbed nothing.
+
+     One function decides that, and both the box that takes the number
+     and the line that prints it back ask it — otherwise the two rules
+     drift apart and a distance can be stored that can never be shown.
+     Whole metres, because a rounding done at the form and a rounding
+     done at the readout are two chances to disagree about 0.4. */
+  CT.metres = function (m) {
+    if (typeof m !== 'number') return null;
+    const n = Math.round(m);
+    return isFinite(n) && n > 0 ? n : null;
+  };
+
   CT.fmtMetres = function (m) {
-    if (typeof m !== 'number' || !isFinite(m) || m <= 0) return null;
-    return Math.round(m) + ' m';
+    const n = CT.metres(m);
+    return n === null ? null : n + ' m';
   };
 
   /* ═══════════════════════════════════════════════════════

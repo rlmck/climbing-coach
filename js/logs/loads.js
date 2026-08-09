@@ -210,6 +210,7 @@
 
     function save() {
       const v = read(), date = dateBar.get();
+      const who = S.forOther(c) ? c.name + ' · ' : '';
       if (editing && date !== editing.date) S.deleteMaxHang(c, editing.date);
       S.logMaxHang(c, date, v);
       const d = derived(v);
@@ -217,12 +218,12 @@
       CT.sheet.close();
       CT.render(false);
       toast(editing ? 'Test updated' : date === dt.iso(dt.today()) ? 'Max hang logged' : 'Logged for ' + dt.short(date),
-        `${CT.fmtLoad(v.tfd)} drag · ${CT.fmtLoad(v.half)} half-crimp` +
+        who + `${CT.fmtLoad(v.tfd)} drag · ${CT.fmtLoad(v.half)} half-crimp` +
         (rebase && d ? ` · now training at ${CT.fmtLoad(d.tfd)} / ${CT.fmtLoad(d.half)}` : ''));
     }
 
     CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date) : c.isSelf ? 'Your training' : c.name,
+      eyebrow: CT.logEyebrow(c, c.isSelf ? 'Your training' : 'Max hang test', editing),
       title: editing ? 'Edit max hang test' : 'Log a max hang test',
       sub: 'What could be held once, added to bodyweight, on a 20 mm edge for seven seconds',
       body: el('div', { class: 'sheet__bd', style: 'gap:22px' }, [
@@ -234,7 +235,8 @@
         editing ? CT.deleteButton(() => {
           S.deleteMaxHang(c, editing.date);
           CT.sheet.close(); CT.render(false);
-          toast('Test deleted', dt.short(editing.date) + ' removed from the chart.');
+          toast('Test deleted',
+            `${S.forOther(c) ? c.name + ' · ' : ''}${dt.short(editing.date)} removed from the chart.`);
         }) : null,
         summary, saveBtn
       ])
@@ -409,7 +411,8 @@
       CT.sheet.close();
       CT.render(false);
       toast('Working loads updated',
-        `${CT.fmtLoad(c.prescribed.tfd)} drag · ${CT.fmtLoad(c.prescribed.half)} half-crimp, from today.`);
+        `${S.forOther(c) ? c.name + ' · ' : ''}${CT.fmtLoad(c.prescribed.tfd)} drag · ` +
+        `${CT.fmtLoad(c.prescribed.half)} half-crimp, from today.`);
     }
 
     function section(title, kids) {
@@ -453,7 +456,7 @@
     directPanes.push(directSection);
 
     CT.sheet.open({
-      eyebrow: c.isSelf ? 'Your training' : c.name,
+      eyebrow: CT.logEyebrow(c, c.isSelf ? 'Your training' : 'Working loads', null),
       title: 'Working loads',
       sub: 'What the hangboard prescribes, and where the number comes from',
       body: el('div', { class: 'sheet__bd', style: 'gap:26px' }, [

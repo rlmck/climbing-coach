@@ -15,7 +15,7 @@
     saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
     saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, deleteMaxHang() {}, saveAthlete() {},
     saveCFTest() {}, deleteCFTest() {},
-    saveProfile: async () => null,
+    saveProfile: () => null,
     createAthlete: async c => c.id
   };
 
@@ -62,15 +62,34 @@
        record they created, and membership is the only check the sessions
        collection has ever made, so this is the app catching up with the
        rules rather than the rules being widened. An athlete is still
-       only ever themselves. */
-    canLog() { return !!S.client(); },
+       only ever themselves.
 
-    /* Writing into somebody else's record rather than your own. Every
-       confirmation this produces should say whose it was. */
-    forOther() { return S.isCoach() && !S.viewingSelf(); },
+       What a log still needs is somewhere to land, which is a question
+       about the screen rather than about permission. The roster shows
+       every athlete and singles out none of them: the record
+       `activeClient` happens to be holding there is navigation state
+       the screen has never said out loud, so a quick-log button on it
+       would file against somebody the coach can't see. Everywhere else
+       the record is named on screen and the button is honest. */
+    logTarget() { return state.route === 'clients' ? null : S.client() || null; },
 
-    /* "your" or "Maks’s" — the possessive the log flows need. */
-    whose(c) { return S.forOther() && c ? c.name + '’s' : 'your'; },
+    /* Writing into somebody else's record rather than your own. Asked
+       of the record being written to, not of whatever the navigation
+       last selected — every sheet is handed the record it serves
+       precisely so it can serve any of them, and two can be on screen
+       at once. Falls back to the record on screen for the callers that
+       are asking about the view itself. */
+    forOther(c) {
+      const r = c || S.client();
+      return S.isCoach() && !!r && !r.isSelf;
+    },
+
+    /* "your" or "Maks’s" — the possessive the log flows need, in the
+       two capitalisations a sentence needs it in. Both live here so
+       that no call site has to reconstruct one from the other, and both
+       resolve the record the same way `forOther` does. */
+    whose(c) { const r = c || S.client(); return S.forOther(r) ? r.name + '’s' : 'your'; },
+    Whose(c) { const r = c || S.client(); return S.forOther(r) ? r.name + '’s' : 'Your'; },
 
     setUser(id) {
       state.viewAs = id;

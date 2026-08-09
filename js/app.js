@@ -200,13 +200,16 @@
        Power Endurance is offered whatever week the block is in. The
        final three weeks are where a plan puts it, not a rule about
        what an athlete is allowed to have done. */
-    const c = S.client();
-    CT.ui.$('.rail__log').style.display = (!S.canLog() || !c) ? 'none' : '';
+    const c = S.logTarget();
+    CT.ui.$('.rail__log').style.display = c ? '' : 'none';
     const logHd = CT.ui.$('.rail__log .eyebrow');
-    if (logHd) logHd.textContent = S.forOther() && c ? 'Quick log · ' + c.name : 'Quick log';
+    /* `c` first: logTarget() returns null for "nowhere to land", and an
+       absent record is the one thing forOther() reads as a question
+       about the view instead of about the record. */
+    if (logHd) logHd.textContent = c && S.forOther(c) ? 'Quick log · ' + c.name : 'Quick log';
     CT.ui.$$('.quick').forEach(b => {
       const type = b.dataset.log;
-      b.style.display = !c ? 'none' : '';
+      b.style.display = c ? '' : 'none';
       b.onclick = () => CT.openLog(type, {});
     });
   }
@@ -272,8 +275,10 @@
     if (S.isCoach()) {
       bar.appendChild(tab('clients', 'Clients', 'people'));
       bar.appendChild(tab('dashboard', 'Home', 'dashboard'));
-      /* The log button is only ever offered where a log can land */
-      if (S.canLog()) bar.appendChild(el('button', {
+      /* The log button is only ever offered where a log can land, and
+         where the screen has said whose record that is — which the
+         roster, showing all of them and naming none, has not. */
+      if (S.logTarget()) bar.appendChild(el('button', {
         class: 'tab tab--log', 'aria-label': 'Log a session',
         onclick: () => CT.openLog(null, {})
       }, [ icon('plus') ]));
@@ -399,7 +404,12 @@
   /* ── log entry points ───────────────────────────────────── */
   CT.openLog = function (type, opts) {
     const c = S.client();
-    if (!c) {
+    /* A record with no block under it has nothing to log against — every
+       sheet past here reads the block for its date bar and its phase.
+       Onboarding writes the athlete and its plan as two steps, so there
+       is a moment where one exists without the other. Brief, but it is a
+       real state, and it gets an answer rather than a stack trace. */
+    if (!c || !c.block) {
       toast('No block set up yet', 'There’s nothing to log against until your coach starts one.');
       return;
     }
@@ -422,7 +432,7 @@
     const isMilestone = S.milestones.includes(now);
     /* Whose week just landed. Logging for somebody else makes an
        unattributed "Week 8 complete" a small guessing game. */
-    const who = S.forOther() ? c.name + ' · ' : '';
+    const who = S.forOther(c) ? c.name + ' · ' : '';
     setTimeout(() => {
       if (isMilestone) milestone(now, 'weeks on target',
         who + 'Every week since ' + dt.mini(S.weekStart(c, S.currentWeek(c) - now + 1)));

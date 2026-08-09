@@ -90,6 +90,18 @@
     return CT.armButton(onConfirm, label || 'Delete', 'Tap again to confirm');
   };
 
+  /* ═════════════════ whose sheet is this ═════════════════
+     The eyebrow every log sheet opens with. A coach holds several
+     records and the sheets are identical whichever one is underneath,
+     so the name leads when it isn't their own — editing included.
+     Editing is where it matters most: that sheet arrives pre-filled and
+     looking right, which makes a write to the wrong athlete the hardest
+     kind to catch. */
+  CT.logEyebrow = function (c, label, editing) {
+    return (S.forOther(c) ? c.name + ' · ' : '') +
+           (editing ? 'Editing · ' + dt.short(editing.date) : label);
+  };
+
   /* ═════════════════ date bar — retro logging is first-class ═════════════════ */
   CT.dateBar = function (c, initial, onChange) {
     const todayISO = dt.iso(dt.today());
@@ -215,19 +227,23 @@
     function save() {
       const date = dateBar.get();
       const payload = Object.assign({ date, mode }, form.payload());
+      /* Two identical sheets that file to different people is exactly
+         how a session ends up on the wrong athlete, so the confirmation
+         says which one it was. */
+      const who = S.forOther(c) ? c.name + ' · ' : '';
 
       if (editing) {
         S.updateSession(c, editing.id, payload);
         CT.sheet.close();
         CT.render(false);
-        toast('Session updated', dt.short(date) + ' · ' + form.savedSub());
+        toast('Session updated', who + dt.short(date) + ' · ' + form.savedSub());
         return;
       }
 
       const before = S.streak(c);
       S.logSession(c, Object.assign({ type: 'strength' }, payload));
       CT.sheet.close();
-      toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date), form.savedSub());
+      toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date), who + form.savedSub());
       CT.afterLog(c, before);
     }
 
@@ -236,7 +252,8 @@
     const body = el('div', { class: 'sheet__bd' }, [
       dateBar,
       picker ? el('div', {}, [
-        el('p', { class: 'eyebrow', style: 'margin-bottom:10px', text: 'What did you do' }),
+        el('p', { class: 'eyebrow', style: 'margin-bottom:10px',
+          text: S.forOther(c) ? `What ${c.name} did` : 'What did you do' }),
         picker
       ]) : null,
       host
@@ -249,14 +266,13 @@
         CT.render(false);
         toast('Session deleted', mode === 'limit'
           ? `${dt.short(editing.date)} cleared from ${S.whose(c)} week.`
-          : 'Loads recalculated from what is left.');
+          : `${S.Whose(c)} loads are recalculated from what is left.`);
       }) : null,
       summary, saveBtn
     ]);
 
     sheet = CT.sheet.open({
-      eyebrow: editing ? 'Editing · ' + dt.short(editing.date)
-             : S.forOther() ? 'Strength · ' + c.name : 'Strength',
+      eyebrow: CT.logEyebrow(c, 'Strength', editing),
       title: form.title,
       sub: form.sub,
       body, footer

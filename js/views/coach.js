@@ -116,18 +116,14 @@
         : `Will read “${v}” — in the switcher, on the coach note your athletes see, and on this screen.`;
     }
 
-    async function commit() {
+    /* Nothing is awaited: the write goes into the same queue as every
+       session logged out of signal, and the name is the app's from the
+       moment it is typed. If the server ever refuses it, that arrives
+       as its own toast rather than as a button that never came back. */
+    function commit() {
       const full = typed();
       if (!full) return;
-      const patch = { name: full.split(/\s+/)[0], full, initials: CT.initialsOf(full) };
-      save.disabled = true;
-      try {
-        await CT.repo.saveProfile(patch);
-      } catch (e) {
-        save.disabled = false;
-        toast('Couldn’t save that', CT.fb.message(e));
-        return;
-      }
+      CT.repo.saveProfile({ name: full.split(/\s+/)[0], full, initials: CT.initialsOf(full) });
       CT.render(false);
       toast('Name updated', `The app calls you ${full} from here on.`);
     }
