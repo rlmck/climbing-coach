@@ -42,8 +42,7 @@
     let b = CT.ui.$('#dropBin');
     if (b) return b;
     b = el('div', { id: 'dropBin', class: 'bin', 'aria-hidden': 'true' }, [
-      icon('bin', 'bin__i'),
-      el('span', { class: 'bin__t', text: 'Drop to remove from the plan' })
+      icon('bin', 'bin__i')
     ]);
     document.body.appendChild(b);
     return b;
@@ -399,13 +398,14 @@
             const onBin = overBin(this.pointerX, this.pointerY);
             const b = CT.ui.$('#dropBin');
             if (b) b.classList.toggle('is-over', onBin);
-            /* Over the bin the session shrinks, which says what dropping
-               will do and — since a tile is nearly as wide as the bar it
-               is over — is also the only way the words underneath stay
-               readable at the moment they matter. */
+            /* Over the bin the session shrinks small enough to sit inside
+               it and fades back, which says what dropping will do and
+               leaves the bin itself legible underneath at the one moment
+               it has to be. */
             if (onBin !== node._onBin) {
               node._onBin = onBin;
-              gsap.to(node, { scale: onBin ? .58 : 1.04, duration: .18, ease: 'power2.out' });
+              gsap.to(node, { scale: onBin ? .38 : 1.04, opacity: onBin ? .5 : 1,
+                              duration: .18, ease: 'power2.out' });
             }
             const target = onBin ? null : dayUnderPointer(this.pointerX, this.pointerY);
             CT.ui.$$('.day', shell).forEach(d => {
@@ -424,9 +424,16 @@
             hideBin();
             CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop', 'is-full'));
             node.classList.remove('is-dragging');
-            gsap.to(node, { scale: 1, rotate: 0, duration: .2 });
 
+            /* Before the tile is put back to its resting size — binDrop has
+               its own way of seeing it off, and two tweens arguing over the
+               same scale is not it. */
             if (onBin && binDrop(slotId, node)) return;
+
+            /* Opacity as well as scale: a session carried over the bin and
+               then dropped somewhere else must not keep the faded look of
+               one that was on its way out. */
+            gsap.to(node, { scale: 1, rotate: 0, opacity: 1, duration: .2 });
 
             const refused = target && target.dataset.date !== originDate()
                          && S.dayIsFull(c, target.dataset.date, slotId);
