@@ -41,12 +41,6 @@
       ]);
       hostEl.appendChild(sheet);
       CT.sheet.showing = true;
-      /* Set after the close above, never before, or a sheet would fire
-         the callback belonging to the one it replaced. A caller that
-         wants to know it was dismissed — the scrim, Escape, the X, the
-         back button, all of which end up in close() — passes onClose;
-         everything else leaves it null. */
-      CT.sheet._onClose = opts.onClose || null;
       motion.sheetIn(scrim, sheet);
 
       /* A sheet is the innermost thing on screen, so it is the first
@@ -64,17 +58,10 @@
       const scrim = CT.ui.$('#scrim'), hostEl = CT.ui.$('#sheetHost');
       const sheet = hostEl.firstChild;
       CT.sheet.showing = false;
-      /* Read and cleared up front: the callback is free to open another
-         sheet, and it must not be handed back its own. It is called
-         immediately rather than after the dismissal animates, because
-         whatever it puts back on screen belongs there now, not in a
-         fifth of a second. */
-      const gone = CT.sheet._onClose; CT.sheet._onClose = null;
       if (CT.sheet._esc) { document.removeEventListener('keydown', CT.sheet._esc); CT.sheet._esc = null; }
-      if (!sheet) { scrim.hidden = true; hostEl.hidden = true; if (gone) gone(); return; }
+      if (!sheet) { scrim.hidden = true; hostEl.hidden = true; return; }
       const done = () => { CT.ui.clear(hostEl); scrim.hidden = true; hostEl.hidden = true; };
       if (instant) done(); else motion.sheetOut(scrim, sheet, done);
-      if (gone) gone();
     }
   };
 

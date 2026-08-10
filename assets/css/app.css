@@ -483,9 +483,7 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
   transition:box-shadow .18s, background .18s;
 }
 .slot:hover{ box-shadow:inset 0 0 0 1px var(--ink-4); }
-/* Above the bin (90), so the thing being thrown away stays visible over
-   the top of it, and below the tab bar (100). */
-.slot.is-dragging{ cursor:grabbing; box-shadow:var(--sh-3); background:var(--surface); z-index:95; }
+.slot.is-dragging{ cursor:grabbing; box-shadow:var(--sh-3); background:var(--surface); z-index:60; }
 .slot__type{ font-size:12.5px; font-weight:600; letter-spacing:-.01em; line-height:1.25; }
 .slot__meta{ font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin-top:4px; }
 .slot__bar{ position:absolute; left:0; top:9px; bottom:9px; width:2.5px; border-radius:2px; background:var(--ink-4); }
@@ -507,36 +505,6 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 }
 .nudge svg{ width:15px; height:15px; flex:none; margin-top:1px; }
 .nudge b{ font-weight:600; }
-
-/* ── the bin ──────────────────────────────────────────────────
-   Only in the document while a planned session is in the air. It sits
-   clear of the tab bar and the home indicator, and it is a bin: no
-   circle, no ring, no plate to sit on — the icon is the whole of it,
-   and it takes the clay colouring the moment the session is caught.
-
-   A glyph this size is far too small to aim at with a thumb, which is
-   why nobody has to aim: the tile is pulled in from a radius many
-   times wider than the drawing (js/views/schedule.js), so proximity
-   decides the drop and the icon only has to be read, not hit.
-
-   `pointer-events:none` is load-bearing. This is hit-tested against the
-   pointer's coordinates, never clicked, and a bar that swallowed events
-   would also swallow the drag it exists to receive. */
-.bin{
-  position:fixed; z-index:90; pointer-events:none;
-  left:0; right:0; margin:0 auto;
-  bottom:calc(var(--tabbar-h, 0px) + env(safe-area-inset-bottom) + 26px);
-  display:none; align-items:center; justify-content:center;
-  width:24px; height:24px;
-  color:var(--ink-3);
-  transition:color .16s, scale .16s;
-}
-.bin.is-on{ display:flex; }
-.bin__i{ width:24px; height:24px; flex:none; }
-/* Over the tile it has caught, not under it (.slot.is-dragging is 95):
-   the session lands on top of the bin and fades back, and the bin has
-   to stay legible through it. */
-.bin.is-over{ color:var(--clay); scale:1.3; z-index:96; }
 
 /* ═══════════════════════════════════════════════════════════
    Strength log — the signature screen

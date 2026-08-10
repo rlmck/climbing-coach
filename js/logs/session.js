@@ -267,7 +267,7 @@
     const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
-      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
+      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
     ];
 
@@ -329,7 +329,7 @@
     const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
-      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off, 4×4s'],
+      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
     ];
 
