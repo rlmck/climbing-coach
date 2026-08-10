@@ -8,6 +8,17 @@
   const hasDrag = !!(window.Draggable && motion.on);
   const hasFlip = !!(window.Flip && motion.on);
 
+  /* How far a press may travel and still be a tap.
+     A finger is not a mouse pointer. Pressing a tile with a thumb and
+     lifting it drifts two or three pixels every time, and at Draggable's
+     default threshold of two that was a drag: the tile picked itself up,
+     sprang back to the day it came from, and the release was swallowed as
+     "that was a move, not a tap". So on a phone, tapping a planned session
+     did nothing at all — and tapping a planned session is the only way to
+     the sheet that removes one from the plan. A mouse doesn't drift, which
+     is why this only ever went wrong on the installed app. */
+  const TAP_SLOP = 9;
+
   CT.views.schedule = function (host, c) {
     const shell = el('div', { class: 'stack', style: 'gap:14px' });
     host.appendChild(shell);
@@ -101,9 +112,11 @@
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
         });
       } else {
-        /* A press that turns into a drag must not also open the sheet on
-           release. The flag is cleared on every fresh press, so a tap that
-           never moved always reads as a tap. */
+        /* A press that actually moved the session must not also open the
+           sheet on release. The flag is set at the end of a drag by how far
+           the thing travelled — not by whether a drag began, which is a
+           different question on a touch screen — and cleared on every fresh
+           press, so a tap always reads as a tap. See setupDrag. */
         const open = () => {
           if (node._dragged) { node._dragged = false; return; }
           CT.views.slotSheet(c, slot);
@@ -268,8 +281,8 @@
           zIndexBoost: false,
           cursor: 'grab',
           activeCursor: 'grabbing',
+          minimumMovement: TAP_SLOP,           // thumb drift is not a drag
           onDragStart() {
-            node._dragged = true;              // this press is a move, not a tap
             node.classList.add('is-dragging');
             gsap.to(node, { scale: 1.04, rotate: -1, duration: .2 });
           },
@@ -283,6 +296,11 @@
             });
           },
           onDragEnd() {
+            /* Read before anything resets the transform. A press that got
+               past the threshold but went nowhere is still a tap — the day
+               it lands on is the day it started, and the person pressing it
+               has no way of telling that apart from a press that missed. */
+            node._dragged = Math.abs(this.x) + Math.abs(this.y) > TAP_SLOP;
             const target = dayUnderPointer(this.pointerX, this.pointerY);
             CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop', 'is-full'));
             node.classList.remove('is-dragging');
