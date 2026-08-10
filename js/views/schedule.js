@@ -30,14 +30,27 @@
 
      This is the way to remove one on a phone, and it is a better way than
      the sheet it supplements: dragging a thing into a bin is a gesture a
-     thumb already knows, it needs no second tap to confirm because nobody
-     drags something into a bin by accident, and — the part that matters —
-     it rides on the drag machinery, which is the one input path on this
-     screen that a touch device has never had any trouble with.
+     thumb already knows, and — the part that matters — it rides on the
+     drag machinery, which is the one input path on this screen that a
+     touch device has never had any trouble with. The drop asks before it
+     takes anything off the plan; see binDrop for why it has to.
 
      One node for the whole app, parked on the body so it sits above the
      grid, the tab bar and anything else. It has no handlers of its own; it
-     is a rectangle the drag hit-tests against. */
+     is a point the drag measures its distance from. */
+
+  /* Gravity. The bin is a small icon and nothing else — far too small to
+     land a session on by aiming at it, and aiming is the last thing a
+     thumb dragging a tile down the screen is in a position to do. So it
+     pulls. Inside PULL the tile starts leaning towards the bin; by GRIP
+     it is held there, dead centre, and stays there while the finger
+     wanders. The two radii are what stop that being a trap: the pull
+     comes on gradually, so there is no moment where the tile jumps, and
+     the commitment — bin lit, tile faded, release deletes — belongs to
+     the inner circle only. Between the two the tile leans and nothing
+     more, which is a hint, and a hint can be walked away from. */
+  const PULL = 130, GRIP = 58;
+
   function theBin() {
     let b = CT.ui.$('#dropBin');
     if (b) return b;
@@ -48,7 +61,8 @@
     return b;
   }
 
-  let binShown = false, dragging = false;
+  /* One press at a time, so one timer for the whole screen. */
+  let binShown = false, dragging = false, holdTimer = null;
 
   function showBin() {
     if (binShown) return;
@@ -61,37 +75,75 @@
 
   function hideBin() {
     const b = CT.ui.$('#dropBin');
+    /* A press that never reached its timer is over too. Without this, a
+       flick — down, drag, released, all inside HOLD_MS — puts the bin away
+       and is then handed a bin by its own pending timer, which arrives
+       after everything that would have taken it away has already run. */
+    clearTimeout(holdTimer); holdTimer = null;
     binShown = false;
     if (!b) return;
     b.classList.remove('is-on', 'is-over');
-    if (motion.on) gsap.set(b, { clearProps: 'transform,opacity' });
+    /* The rise is killed, not just cleared: a tween still running writes
+       its values back over anything set underneath it. */
+    if (motion.on) { gsap.killTweensOf(b); gsap.set(b, { clearProps: 'transform,opacity' }); }
   }
 
   /* Read live, and only ever while the bin is up — the drop is decided
-     before anything puts it away. */
-  function overBin(x, y) {
+     before anything puts it away.
+
+     The rise is a transform and the caught state is a CSS `scale`, both
+     of which are in the measured rectangle; the centre survives the
+     scale (it grows about its middle) but not the rise, so that much is
+     taken back out. Otherwise a session reaching for a bin still on its
+     way up would be measured against where it no longer is. */
+  function binCentre() {
     const b = CT.ui.$('#dropBin');
-    if (!binShown || !b) return false;
+    if (!binShown || !b) return null;
     const r = b.getBoundingClientRect();
-    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    const rise = (window.gsap && gsap.getProperty(b, 'y')) || 0;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 - rise };
+  }
+
+  function binDist(x, y) {
+    const c0 = binCentre();
+    if (!c0) return Infinity;
+    return Math.hypot(x - c0.x, y - c0.y);
+  }
+
+  /* Caught: released here, the session comes off the plan. */
+  function overBin(x, y) { return binDist(x, y) <= GRIP; }
+
+  /* How much of the way towards the bin the tile is dragged by it:
+     nothing at PULL, all of it at GRIP, and smoothly in between so the
+     lean has no seam at either end. */
+  function binPull(dist) {
+    if (dist >= PULL) return 0;
+    if (dist <= GRIP) return 1;
+    const t = (PULL - dist) / (PULL - GRIP);
+    return t * t * (3 - 2 * t);
   }
 
   /* A press that lingers summons the bin without waiting for movement,
      which is what "press and hold" means. A press that ends before the
-     timer, or turns into a scroll, leaves nothing behind. */
-  function holdBin(node) {
-    clearTimeout(node._hold);
-    node._hold = setTimeout(showBin, HOLD_MS);
+     timer, or turns into a scroll, leaves nothing behind.
+
+     The end of the press is listened for on the window rather than the
+     tile, because by then the finger is somewhere else entirely: a
+     release lands on whatever is under it, which for a session being
+     carried to the bin is never the tile it started on. */
+  function holdBin() {
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(showBin, HOLD_MS);
     const off = () => {
-      clearTimeout(node._hold);
-      node.removeEventListener('pointerup', off);
-      node.removeEventListener('pointercancel', off);
+      clearTimeout(holdTimer); holdTimer = null;
+      window.removeEventListener('pointerup', off, true);
+      window.removeEventListener('pointercancel', off, true);
       /* Deferred, because the drop is settled in onDragEnd and this fires
          first on some engines. A drag still running keeps its bin. */
       setTimeout(() => { if (!dragging) hideBin(); }, 120);
     };
-    node.addEventListener('pointerup', off);
-    node.addEventListener('pointercancel', off);
+    window.addEventListener('pointerup', off, true);
+    window.addEventListener('pointercancel', off, true);
   }
 
   CT.views.schedule = function (host, c) {
@@ -215,7 +267,7 @@
         const open = () => CT.views.slotSheet(c, slot);
         node.addEventListener('pointerdown', ev => {
           node._press = { x: ev.clientX, y: ev.clientY, t: Date.now() };
-          holdBin(node);
+          holdBin();
         });
         node.addEventListener('pointerup', ev => {
           const p = node._press;
@@ -390,21 +442,56 @@
             node._onBin = false;
             node.classList.add('is-dragging');
             showBin();
+            /* Two readings the pull is worked out from, both taken once.
+
+               _home is where this tile's centre sits with no drag on it —
+               read through whatever transform is already applied, since
+               scale and rotation both work about the centre and move it
+               nowhere, leaving the x/y as the only part to take back out.
+
+               _grab is the pointer and the transform at this instant, from
+               which the free position — where the tile would be with no
+               bin in the world — is the one plus the pointer's travel. It
+               is worked out here rather than read off the element because
+               the element is about to stop telling the truth: from the
+               first frame of pull, what is on it is the pulled position,
+               and a pull measured from a pulled position never lets go. */
+            const r = node.getBoundingClientRect();
+            const tx = gsap.getProperty(node, 'x') || 0, ty = gsap.getProperty(node, 'y') || 0;
+            node._home = { x: r.left + r.width / 2 - tx, y: r.top + r.height / 2 - ty };
+            node._grab = { px: this.pointerX, py: this.pointerY, tx, ty };
             gsap.to(node, { scale: 1.04, rotate: -1, duration: .2 });
           },
           onDrag() {
             /* Over the bin, no day is a candidate — the two are alternatives
                and lighting both would be a lie about where it will land. */
-            const onBin = overBin(this.pointerX, this.pointerY);
+            const dist = binDist(this.pointerX, this.pointerY);
+            const onBin = dist <= GRIP;
             const b = CT.ui.$('#dropBin');
             if (b) b.classList.toggle('is-over', onBin);
-            /* Over the bin the session shrinks small enough to sit inside
-               it and fades back, which says what dropping will do and
-               leaves the bin itself legible underneath at the one moment
-               it has to be. */
+
+            /* The pull itself. Draggable has already put the tile under
+               the finger by the time this runs, so this is an override of
+               that position, applied every frame before the browser paints
+               — near the bin the tile is drawn towards it, and inside GRIP
+               it is planted on it and the finger can move without it. */
+            const k = binPull(dist), centre = binCentre();
+            if (k > 0 && centre && node._home) {
+              const g = node._grab;
+              const fx = g.tx + (this.pointerX - g.px), fy = g.ty + (this.pointerY - g.py);
+              gsap.set(node, {
+                x: fx + (centre.x - node._home.x - fx) * k,
+                y: fy + (centre.y - node._home.y - fy) * k
+              });
+            }
+
+            /* Caught, the session shrinks to about the size of the icon
+               and fades back: that says what releasing will do, and it
+               leaves the bin — which is drawn over the top of it — legible
+               at the one moment it has to be. */
             if (onBin !== node._onBin) {
               node._onBin = onBin;
-              gsap.to(node, { scale: onBin ? .38 : 1.04, opacity: onBin ? .5 : 1,
+              gsap.to(node, { scale: onBin ? .3 : 1.04, opacity: onBin ? .35 : 1,
                               duration: .18, ease: 'power2.out' });
             }
             const target = onBin ? null : dayUnderPointer(this.pointerX, this.pointerY);
@@ -425,9 +512,10 @@
             CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop', 'is-full'));
             node.classList.remove('is-dragging');
 
-            /* Before the tile is put back to its resting size — binDrop has
-               its own way of seeing it off, and two tweens arguing over the
-               same scale is not it. */
+            /* Before the tile is put back to its resting size — binDrop
+               takes it from here, either seeing it off or sending it home
+               itself, and two tweens arguing over the same scale is not
+               how either of those should look. */
             if (onBin && binDrop(slotId, node)) return;
 
             /* Opacity as well as scale: a session carried over the bin and
@@ -458,18 +546,66 @@
       });
     }
 
-    /* Dropped on the bin. No arm-then-confirm here: the gesture is its own
-       confirmation, and nothing that was logged can reach this — a session
-       on the record locks its tile and never gets a Draggable. */
+    /* Dropped on the bin, which asks before it swallows anything.
+
+       The gesture is not its own confirmation now that the bin reaches out
+       and takes hold of what comes near it: a tile can end up in there
+       without ever being aimed at it, and something taken off the plan by
+       a hand that only meant to move it is not recoverable by dragging it
+       back. So the drop is a proposal, and the tile waits where it landed
+       while the question is asked — dismissed any way at all, it flies
+       home, which is the answer a dismissal means. Nothing logged can
+       reach here either way: a session on the record locks its tile and
+       never gets a Draggable. */
     function binDrop(slotId, node) {
       const slot = c.slots.find(s => s.id === slotId);
-      if (!slot || !S.removeSlot(c, slot.id)) return false;
+      if (!slot) return false;
       const T = CT.TYPE[slot.type];
-      const done = () => render();
-      if (motion.on) gsap.to(node, { scale: .5, opacity: 0, duration: .24, ease: 'power2.in', onComplete: done });
-      else done();
-      toast(`Removed from ${S.whose(c)} plan`,
-        `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+      let settled = false;
+
+      const home = () => gsap.to(node, { x: 0, y: 0, scale: 1, rotate: 0, opacity: 1,
+                                         duration: .45, ease: 'power3.out' });
+
+      /* Held at the bin, but legible again — under the scrim it is the
+         one thing on screen the question is about. */
+      gsap.to(node, { scale: .62, rotate: 0, opacity: 1, duration: .2 });
+
+      const remove = () => {
+        settled = true;
+        CT.sheet.close();
+        if (!S.removeSlot(c, slot.id)) { home(); return; }
+        const done = () => render();
+        if (motion.on) gsap.to(node, { scale: .1, opacity: 0, duration: .26, ease: 'power2.in', onComplete: done });
+        else done();
+        toast(`Removed from ${S.whose(c)} plan`,
+          `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+      };
+
+      /* How thin the week gets if this one goes — the same arithmetic the
+         sheet behind the tile shows, because it is the same decision. */
+      const asks = slot.type === 'pe' && slot.week < c.block.peFromWeek ? 0 : c.targets[slot.type];
+      const planned = c.slots.filter(s => s.week === slot.week && s.type === slot.type).length;
+
+      CT.sheet.open({
+        eyebrow: 'Remove from plan',
+        title: `${T.label} on ${dt.short(slot.date)}?`,
+        sub: `${S.Whose(c)} plan · nothing is logged against it`,
+        body: el('div', { class: 'sheet__bd' }, [
+          el('p', { text: 'It comes off the plan for good. Nothing that has been logged is touched, and the day itself stays where it is.' }),
+          planned <= asks
+            ? el('div', { class: 'nudge' }, [ icon('info'), el('p', {
+                html: `${S.Whose(c)} week asks for <b>${asks} ${T.label}</b>. ` +
+                      `Remove this and ${planned - 1} ` +
+                      `${planned - 1 === 1 ? 'is' : 'are'} left planned — one can still be logged on any day.` }) ])
+            : null
+        ]),
+        footer: el('div', { class: 'sheet__ft' }, [
+          el('button', { class: 'btn btn--quiet', onclick: () => CT.sheet.close() }, [ 'Keep it' ]),
+          el('button', { class: 'btn btn--ghost btn--danger', style: 'margin-left:auto', onclick: remove },
+            [ icon('bin'), 'Remove' ])
+        ]),
+        onClose: () => { if (!settled) home(); }
+      });
       return true;
     }
 
