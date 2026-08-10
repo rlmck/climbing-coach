@@ -446,34 +446,6 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
   font-size:16px; font-weight:600; letter-spacing:-.03em; font-variant-numeric:tabular-nums;
 }
 
-/* this week list */
-.plan{ display:flex; flex-direction:column; }
-.plan__row{
-  display:flex; align-items:center; gap:13px;
-  padding:13px 20px;
-  border-top:1px solid var(--line);
-  transition:background .15s;
-}
-.plan__row:first-child{ border-top:0; }
-.plan__row:hover{ background:var(--surface-2); }
-.plan__day{
-  width:52px; flex:none;
-  font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3);
-}
-.plan__mark{
-  width:20px; height:20px; border-radius:50%; flex:none;
-  display:grid; place-items:center;
-  box-shadow:inset 0 0 0 1.5px var(--line-2);
-}
-.plan__mark svg{ width:11px; height:11px; opacity:0; }
-.plan__row--done .plan__mark{ background:var(--spruce); box-shadow:none; color:#fff; }
-.plan__row--done .plan__mark svg{ opacity:1; }
-.plan__row--missed .plan__mark{ box-shadow:inset 0 0 0 1.5px var(--clay); background:var(--clay-tint); }
-.plan__name{ font-size:14.5px; font-weight:500; }
-.plan__row--missed .plan__name{ color:var(--ink-3); }
-.plan__detail{ font-size:12.5px; color:var(--ink-3); }
-.plan__act{ margin-left:auto; display:flex; align-items:center; gap:8px; }
-
 /* section heading */
 .sec{ display:flex; align-items:baseline; gap:12px; margin:34px 0 13px; }
 .sec:first-child{ margin-top:0; }
@@ -511,7 +483,9 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
   transition:box-shadow .18s, background .18s;
 }
 .slot:hover{ box-shadow:inset 0 0 0 1px var(--ink-4); }
-.slot.is-dragging{ cursor:grabbing; box-shadow:var(--sh-3); background:var(--surface); z-index:60; }
+/* Above the bin (90), so the thing being thrown away stays visible over
+   the top of it, and below the tab bar (100). */
+.slot.is-dragging{ cursor:grabbing; box-shadow:var(--sh-3); background:var(--surface); z-index:95; }
 .slot__type{ font-size:12.5px; font-weight:600; letter-spacing:-.01em; line-height:1.25; }
 .slot__meta{ font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin-top:4px; }
 .slot__bar{ position:absolute; left:0; top:9px; bottom:9px; width:2.5px; border-radius:2px; background:var(--ink-4); }
@@ -533,6 +507,35 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 }
 .nudge svg{ width:15px; height:15px; flex:none; margin-top:1px; }
 .nudge b{ font-weight:600; }
+
+/* ── the bin ──────────────────────────────────────────────────
+   Only in the document while a planned session is in the air. It sits
+   clear of the tab bar and the home indicator, wide enough to be hit
+   with a thumb that is already holding something, and takes the clay
+   colouring the moment the session is over it — so the drop is
+   committed to before the finger lifts, not after.
+
+   `pointer-events:none` is load-bearing. This is hit-tested against the
+   pointer's coordinates, never clicked, and a bar that swallowed events
+   would also swallow the drag it exists to receive. */
+.bin{
+  position:fixed; z-index:90; pointer-events:none;
+  left:12px; right:12px; max-width:420px; margin:0 auto;
+  bottom:calc(var(--tabbar-h, 0px) + env(safe-area-inset-bottom) + 14px);
+  display:none; align-items:center; justify-content:center; gap:10px;
+  min-height:62px; padding:0 20px; border-radius:16px;
+  background:var(--surface); color:var(--ink-2);
+  border:1.5px dashed var(--line-2);
+  box-shadow:var(--sh-3);
+  font-size:13.5px; font-weight:550; letter-spacing:-.008em; white-space:nowrap;
+  transition:background .16s, color .16s, border-color .16s;
+}
+.bin.is-on{ display:flex; }
+.bin__i{ width:18px; height:18px; flex:none; }
+.bin.is-over{
+  background:var(--clay); color:#fff;
+  border-color:var(--clay); border-style:solid;
+}
 
 /* ═══════════════════════════════════════════════════════════
    Strength log — the signature screen
@@ -1263,12 +1266,7 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
   .proto div:nth-child(4){ border-left:0; }
   .card__hd{ flex-wrap:wrap; padding:16px 16px 0; }
   .card__bd{ padding:14px 16px 16px; }
-  .plan__row, .histrow{ padding:12px 16px; }
-  /* Two words and a button don't both fit beside a session's name at this
-     width, and the name is the part being acted on. The cross carries it
-     alone, and still turns clay once armed. */
-  .plan__rm span{ display:none; }
-  .plan__rm{ padding:0 9px; }
+  .histrow{ padding:12px 16px; }
   .histrow__date{ display:none; }
   .block{ padding:18px 16px 16px; }
   .ribbon__legend{ flex-wrap:wrap; gap:8px 16px; }

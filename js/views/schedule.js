@@ -19,6 +19,82 @@
      is why this only ever went wrong on the installed app. */
   const TAP_SLOP = 9;
 
+  /* How long a press has to last before it stops being a tap and becomes a
+     reach for the bin. */
+  const HOLD_MS = 400;
+
+  /* ═══════════════ the bin ═══════════════
+     Press a planned session and hold, or simply start dragging one, and a
+     bin rises from the bottom of the screen. Drop the session on it and it
+     comes off the plan.
+
+     This is the way to remove one on a phone, and it is a better way than
+     the sheet it supplements: dragging a thing into a bin is a gesture a
+     thumb already knows, it needs no second tap to confirm because nobody
+     drags something into a bin by accident, and — the part that matters —
+     it rides on the drag machinery, which is the one input path on this
+     screen that a touch device has never had any trouble with.
+
+     One node for the whole app, parked on the body so it sits above the
+     grid, the tab bar and anything else. It has no handlers of its own; it
+     is a rectangle the drag hit-tests against. */
+  function theBin() {
+    let b = CT.ui.$('#dropBin');
+    if (b) return b;
+    b = el('div', { id: 'dropBin', class: 'bin', 'aria-hidden': 'true' }, [
+      icon('bin', 'bin__i'),
+      el('span', { class: 'bin__t', text: 'Drop to remove from the plan' })
+    ]);
+    document.body.appendChild(b);
+    return b;
+  }
+
+  let binShown = false, dragging = false;
+
+  function showBin() {
+    if (binShown) return;
+    binShown = true;
+    const b = theBin();
+    b.classList.add('is-on');
+    if (motion.on) gsap.fromTo(b, { y: 26, opacity: 0 },
+      { y: 0, opacity: 1, duration: .32, ease: 'power3.out' });
+  }
+
+  function hideBin() {
+    const b = CT.ui.$('#dropBin');
+    binShown = false;
+    if (!b) return;
+    b.classList.remove('is-on', 'is-over');
+    if (motion.on) gsap.set(b, { clearProps: 'transform,opacity' });
+  }
+
+  /* Read live, and only ever while the bin is up — the drop is decided
+     before anything puts it away. */
+  function overBin(x, y) {
+    const b = CT.ui.$('#dropBin');
+    if (!binShown || !b) return false;
+    const r = b.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+
+  /* A press that lingers summons the bin without waiting for movement,
+     which is what "press and hold" means. A press that ends before the
+     timer, or turns into a scroll, leaves nothing behind. */
+  function holdBin(node) {
+    clearTimeout(node._hold);
+    node._hold = setTimeout(showBin, HOLD_MS);
+    const off = () => {
+      clearTimeout(node._hold);
+      node.removeEventListener('pointerup', off);
+      node.removeEventListener('pointercancel', off);
+      /* Deferred, because the drop is settled in onDragEnd and this fires
+         first on some engines. A drag still running keeps its bin. */
+      setTimeout(() => { if (!dragging) hideBin(); }, 120);
+    };
+    node.addEventListener('pointerup', off);
+    node.addEventListener('pointercancel', off);
+  }
+
   CT.views.schedule = function (host, c) {
     const shell = el('div', { class: 'stack', style: 'gap:14px' });
     host.appendChild(shell);
@@ -47,7 +123,14 @@
     let week = Math.max(range.first, Math.min(range.last, here() + CT.state.weekOffset));
     let draggables = [];
 
-    function killDrag() { draggables.forEach(d => d.kill()); draggables = []; }
+    /* Also the bin: a re-render, or leaving the screen, is the end of
+       whatever was in the air. */
+    function killDrag() {
+      draggables.forEach(d => d.kill());
+      draggables = [];
+      dragging = false;
+      hideBin();
+    }
 
     function dayUnderPointer(x, y) {
       return CT.ui.$$('.day', shell).find(d => {
@@ -94,7 +177,8 @@
         'aria-label': `${T.label}, ${dt.short(slot.date)}, ${status}. ` +
           (locked ? 'Open to edit or delete it.'
                   : 'Open to log or remove it, or use left and right arrow keys to move it a day.'),
-        title: locked ? 'Open to edit or delete' : 'Tap to log or remove · drag to another day, or use ← →'
+        title: locked ? 'Open to edit or delete'
+                      : 'Tap to log or remove · hold and drag to another day, or onto the bin'
       }, [
         el('span', { class: 'slot__bar' }),
         locked ? icon('check', 'slot__tick') : null,
@@ -112,17 +196,36 @@
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); }
         });
       } else {
-        /* A press that actually moved the session must not also open the
-           sheet on release. The flag is set at the end of a drag by how far
-           the thing travelled — not by whether a drag began, which is a
-           different question on a touch screen — and cleared on every fresh
-           press, so a tap always reads as a tap. See setupDrag. */
-        const open = () => {
-          if (node._dragged) { node._dragged = false; return; }
-          CT.views.slotSheet(c, slot);
-        };
-        node.addEventListener('pointerdown', () => { node._dragged = false; });
-        node.addEventListener('click', open);
+        /* The tap is recognised from the pointer events themselves rather
+           than waited for as a `click`.
+
+           A click on a touch screen is not an event the finger produces —
+           it is synthesised afterwards, and the browser withholds it if
+           anything called preventDefault on the press. Draggable does
+           exactly that on every element that isn't a real <a> or <button>,
+           which this tile isn't. So the click arrived on a desktop and,
+           depending on the engine, never arrived on a phone, and the sheet
+           behind this tile — the one holding "Remove from plan" — could not
+           be opened on the device the plan is read on.
+
+           pointerdown and pointerup are the real events and both always
+           arrive. A press that stayed put and was brief is a tap; anything
+           that travelled is a drag, and anything held is a reach for the
+           bin. None of that has to be guessed from a click that may or may
+           not come. */
+        const open = () => CT.views.slotSheet(c, slot);
+        node.addEventListener('pointerdown', ev => {
+          node._press = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+          holdBin(node);
+        });
+        node.addEventListener('pointerup', ev => {
+          const p = node._press;
+          node._press = null;
+          if (!p) return;
+          const moved = Math.abs(ev.clientX - p.x) + Math.abs(ev.clientY - p.y);
+          if (moved > TAP_SLOP || Date.now() - p.t > HOLD_MS) return;
+          open();
+        });
         node.addEventListener('keydown', ev => {
           if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); return; }
           if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
@@ -249,7 +352,7 @@
         legend('var(--surface-2)', 'var(--line-2)', 'Suggested'),
         legend('transparent', 'var(--line-2)', 'Missed'),
         el('p', { class: 'tiny', style: 'margin-left:auto',
-          text: hasDrag ? 'Tap a session to log or remove it · drag to move · ← → when focused'
+          text: hasDrag ? 'Tap a session to log it · hold and drag to move it, or drop it on the bin to remove it'
                         : 'Tap a session to log or remove it · focus one and use ← → to move it' })
       ]));
 
@@ -283,11 +386,28 @@
           activeCursor: 'grabbing',
           minimumMovement: TAP_SLOP,           // thumb drift is not a drag
           onDragStart() {
+            dragging = true;
+            node._press = null;                // this press is a move, not a tap
+            node._onBin = false;
             node.classList.add('is-dragging');
+            showBin();
             gsap.to(node, { scale: 1.04, rotate: -1, duration: .2 });
           },
           onDrag() {
-            const target = dayUnderPointer(this.pointerX, this.pointerY);
+            /* Over the bin, no day is a candidate — the two are alternatives
+               and lighting both would be a lie about where it will land. */
+            const onBin = overBin(this.pointerX, this.pointerY);
+            const b = CT.ui.$('#dropBin');
+            if (b) b.classList.toggle('is-over', onBin);
+            /* Over the bin the session shrinks, which says what dropping
+               will do and — since a tile is nearly as wide as the bar it
+               is over — is also the only way the words underneath stay
+               readable at the moment they matter. */
+            if (onBin !== node._onBin) {
+              node._onBin = onBin;
+              gsap.to(node, { scale: onBin ? .58 : 1.04, duration: .18, ease: 'power2.out' });
+            }
+            const target = onBin ? null : dayUnderPointer(this.pointerX, this.pointerY);
             CT.ui.$$('.day', shell).forEach(d => {
               const over = d === target && d.dataset.date !== originDate();
               const full = over && S.dayIsFull(c, d.dataset.date, slotId);
@@ -296,15 +416,18 @@
             });
           },
           onDragEnd() {
-            /* Read before anything resets the transform. A press that got
-               past the threshold but went nowhere is still a tap — the day
-               it lands on is the day it started, and the person pressing it
-               has no way of telling that apart from a press that missed. */
-            node._dragged = Math.abs(this.x) + Math.abs(this.y) > TAP_SLOP;
-            const target = dayUnderPointer(this.pointerX, this.pointerY);
+            dragging = false;
+            /* Decided before anything puts the bin away or resets the
+               transform. */
+            const onBin = overBin(this.pointerX, this.pointerY);
+            const target = onBin ? null : dayUnderPointer(this.pointerX, this.pointerY);
+            hideBin();
             CT.ui.$$('.day', shell).forEach(d => d.classList.remove('is-drop', 'is-full'));
             node.classList.remove('is-dragging');
             gsap.to(node, { scale: 1, rotate: 0, duration: .2 });
+
+            if (onBin && binDrop(slotId, node)) return;
+
             const refused = target && target.dataset.date !== originDate()
                          && S.dayIsFull(c, target.dataset.date, slotId);
             if (!target || target.dataset.date === originDate() || refused) {
@@ -326,6 +449,21 @@
           return slot ? slot.date : null;
         }
       });
+    }
+
+    /* Dropped on the bin. No arm-then-confirm here: the gesture is its own
+       confirmation, and nothing that was logged can reach this — a session
+       on the record locks its tile and never gets a Draggable. */
+    function binDrop(slotId, node) {
+      const slot = c.slots.find(s => s.id === slotId);
+      if (!slot || !S.removeSlot(c, slot.id)) return false;
+      const T = CT.TYPE[slot.type];
+      const done = () => render();
+      if (motion.on) gsap.to(node, { scale: .5, opacity: 0, duration: .24, ease: 'power2.in', onComplete: done });
+      else done();
+      toast(`Removed from ${S.whose(c)} plan`,
+        `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+      return true;
     }
 
     render();
