@@ -370,7 +370,7 @@
       class: 'histrow', 'aria-label': `${T.label} on ${dt.short(s.date)}. Open to edit or delete.`,
       onclick: () => CT.openLog(s.type, { sessionId: s.id })
     }, [
-      el('span', { class: 'quick__dot quick__dot--' + (s.type === 'strength' ? 's' : s.type === 'pe' ? 'p' : 'e') }),
+      el('span', { class: 'quick__dot quick__dot--' + T.dot }),
       el('div', { class: 'histrow__main' }, [
         el('p', { class: 'histrow__t', text: T.label }),
         el('p', { class: 'histrow__d', text: CT.describe(c, s) })

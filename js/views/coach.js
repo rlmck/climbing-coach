@@ -219,6 +219,10 @@
     toast('That’s your training now', `${c.full} is off the roster and under your own view.`);
   }
 
+  /* The three the block is built from. Climbing is a fourth kind of
+     session and deliberately not a fourth row: it has no target because
+     nobody prescribes going climbing, and a stepper here would invite
+     a coach to set one and then wonder why the week never counted it. */
   function targetCard(c) {
     const rows = [
       ['strength',  'Strength',        'Max hangs — one per week is the floor'],
@@ -239,7 +243,7 @@
               'The plan updated from this week onwards. Logged sessions stay put.');
       };
       return el('div', { class: 'target' }, [
-        el('span', { class: 'quick__dot quick__dot--' + (key === 'strength' ? 's' : key === 'pe' ? 'p' : 'e') }),
+        el('span', { class: 'quick__dot quick__dot--' + CT.TYPE[key].dot }),
         el('div', {}, [
           el('p', { class: 'target__n', text: name }),
           el('p', { class: 'target__d', text: desc })

@@ -253,13 +253,16 @@
   /* ═══════════════ which kind of session? ═══════════════
      Nothing in the app opens a log without knowing what it is.
 
-     All three kinds are always on offer, Power Endurance included. It
+     All four kinds are always on offer, Power Endurance included. It
      used to be withheld until the block reached its power-endurance
      weeks, which quietly made the log a record of the plan: an athlete
      who did 4×4s in week two had done them, and the app's answer was
      that they couldn't have. The phase is still said out loud — it is
      real, and doing anaerobic work early is worth knowing about — it
-     simply no longer refuses the entry. */
+     simply no longer refuses the entry.
+
+     Climbing sits last and is marked as outside the plan, which is not
+     a demotion — it is the one kind here nobody prescribed. */
   CT.views.chooseLog = function (c, opts) {
     const date = opts.date || dt.iso(dt.today());
     /* By the week the session happened in, not the week the athlete is
@@ -268,16 +271,19 @@
     const kinds = [
       ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
-      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
+      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters'],
+      ['climbing',  'Climbing',        'A session on the wall or at the crag — routes or problems']
     ];
 
     const body = el('div', { class: 'sheet__bd' }, [
       el('div', { class: 'picker', style: 'grid-template-columns:1fr' }, kinds.map(([id, name, desc]) =>
         el('button', { class: 'pick', onclick: () => { CT.sheet.close(true); CT.openLog(id, opts); } }, [
           el('div', { class: 'row', style: 'gap:10px' }, [
-            el('span', { class: 'quick__dot quick__dot--' + (id === 'strength' ? 's' : id === 'pe' ? 'p' : 'e') }),
+            el('span', { class: 'quick__dot quick__dot--' + CT.TYPE[id].dot }),
             el('p', { class: 'pick__n', text: name }),
-            id === 'pe' && !peOpen
+            id === 'climbing'
+              ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Not a target' })
+              : id === 'pe' && !peOpen
               ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Outside the plan' }) : null
           ]),
           el('p', { class: 'pick__d', style: 'margin-left:17px', text: desc })
@@ -330,7 +336,8 @@
     const kinds = [
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
-      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters']
+      ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters'],
+      ['climbing',  'Climbing',        'A day on the wall or at the crag — routes or problems']
     ];
 
     const place = type => {
@@ -348,9 +355,11 @@
       el('div', { class: 'picker', style: 'grid-template-columns:1fr' }, kinds.map(([id, name, desc]) =>
         el('button', { class: 'pick', onclick: () => place(id) }, [
           el('div', { class: 'row', style: 'gap:10px' }, [
-            el('span', { class: 'quick__dot quick__dot--' + (id === 'strength' ? 's' : id === 'pe' ? 'p' : 'e') }),
+            el('span', { class: 'quick__dot quick__dot--' + CT.TYPE[id].dot }),
             el('p', { class: 'pick__n', text: name }),
-            id === 'pe' && !peOpen
+            id === 'climbing'
+              ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Not a target' })
+              : id === 'pe' && !peOpen
               ? el('span', { class: 'chip', style: 'margin-left:auto', text: 'Outside the plan' }) : null
           ]),
           el('p', { class: 'pick__d', style: 'margin-left:17px', text: desc })
@@ -359,7 +368,13 @@
       el('p', { class: 'tiny', text: peOpen
         ? `It joins ${S.whose(c)} plan as a suggested session — drag it to another day any time.`
         : `It joins ${S.whose(c)} plan as a suggested session. Power Endurance isn’t scheduled until ` +
-          `week ${c.block.peFromWeek}, so one placed here is an addition to the block rather than part of it.` })
+          `week ${c.block.peFromWeek}, so one placed here is an addition to the block rather than part of it.` }),
+      /* Said once, here, because a planned climbing day looks exactly
+         like a planned session and is not one: nothing counts it, and
+         nothing goes wrong if it doesn't happen. */
+      el('p', { class: 'tiny', text:
+        'A planned Climbing day is a note to yourself. It fills no weekly target, and missing one ' +
+        'costs nothing — the week is still measured on the sessions the block asks for.' })
     ]);
 
     CT.sheet.open({
@@ -383,8 +398,10 @@
     const future = slot.date > todayISO;
     const missed = S.slotStatus(c, slot) === 'missed';
 
-    /* how thin the week gets if this one goes */
-    const asks = slot.type === 'pe' && slot.week < c.block.peFromWeek ? 0 : c.targets[slot.type];
+    /* How thin the week gets if this one goes. Zero for a type the block
+       never asks for — Climbing has no target and a week of it can't be
+       thin, so there is nothing here to warn anybody about. */
+    const asks = slot.type === 'pe' && slot.week < c.block.peFromWeek ? 0 : (c.targets[slot.type] || 0);
     const planned = c.slots.filter(s => s.week === slot.week && s.type === slot.type).length;
 
     const cell = (label, value) => el('div', {}, [ el('dt', { text: label }), el('dd', { text: value }) ]);
@@ -403,6 +420,9 @@
             html: `${S.Whose(c)} week asks for <b>${asks} ${T.label}</b>. ` +
                   `Remove this and ${planned - 1} ` +
                   `${planned - 1 === 1 ? 'is' : 'are'} left planned — one can still be logged on any day.` }) ])
+        : null,
+      slot.type === 'climbing'
+        ? el('p', { class: 'tiny', text: 'Climbing fills no weekly target — this is a note to yourself, and missing it costs nothing.' })
         : null,
       el('p', { class: 'tiny', text: future
         ? 'Nothing is logged against a planned session until the day itself.'
@@ -665,7 +685,9 @@
       formHost.appendChild(el('div', { class: 'field', style: 'margin-top:14px' }, [
         el('label', { text: 'Notes' }),
         el('textarea', { class: 'input', id: 'eNotes', text: editing ? editing.notes : '',
-          placeholder: type === 'pe' ? 'How the last set felt. Where it fell apart.' : 'Terrain, partners, how it felt.' })
+          placeholder: type === 'pe' ? 'How the last set felt. Where it fell apart.'
+                     : type === 'climbing' ? 'Where you were, who with, what you got on.'
+                     : 'Terrain, partners, how it felt.' })
       ]));
     }
 
@@ -709,6 +731,7 @@
        insisting a session was in phase after it had been backdated out
        of one, and the other way round. */
     function phaseSub() {
+      if (type === 'climbing') return 'Climbing you did — on the record, not against a target';
       if (type !== 'pe') return 'Aerobic capacity — the volume that carries the block';
       return S.weekIndex(c, dateBar.get()) < c.block.peFromWeek
         ? `Anaerobic work — the plan schedules it from week ${c.block.peFromWeek}, but a session done ` +
@@ -722,7 +745,7 @@
 
     sheet = CT.sheet.open({
       eyebrow: CT.logEyebrow(c, T.label, editing),
-      title: type === 'pe' ? 'Power Endurance' : 'Endurance',
+      title: T.label,
       sub: phaseSub(),
       body,
       footer: el('div', { class: 'sheet__ft' }, [

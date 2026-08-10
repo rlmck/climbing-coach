@@ -46,15 +46,26 @@
     return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   }
 
-  /* ── taxonomy ───────────────────────────────────────────── */
+  /* ── taxonomy ───────────────────────────────────────────────
+     `dot` is the colour every screen marks the type with. It lives here
+     rather than in each view because there are five screens that draw
+     one, and a type whose colour is decided five times is a type that
+     ends up a different colour on one of them. */
   CT.TYPE = {
-    strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs or limit boulders' },
-    endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity' },
+    strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs or limit boulders', dot:'s' },
+    endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity', dot:'e' },
     /* The final three weeks are where a block *plans* power endurance.
        They are not a gate on logging it: an athlete who did 4×4s in
        week two did them, and a log that won't take the session is a
        log that disagrees with the training. */
-    pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic capacity' }
+    pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic capacity', dot:'p' },
+    /* Climbing, as opposed to training. The block doesn't prescribe it
+       and no weekly target counts it — see S.weekProgress, which asks
+       about the three types a block is built from and not this one. It
+       is here because it happened: a Saturday at the crag is most of
+       what the fingers did that week, and a record that only holds the
+       prescribed work is a record that can't explain a tired Monday. */
+    climbing:  { id:'climbing',  label:'Climbing',        short:'Climbing', detail:'Routes or boulders', dot:'c' }
   };
 
   CT.GRIPS = [
@@ -134,6 +145,14 @@
       { id:'wallcrawl',  name:'Wall Crawls',   desc:'Long continuous circuits to failure' },
       { id:'longboulder',name:'Long Problems', desc:'15–25 move linked problems' },
       { id:'repeaters',  name:'7:3 Repeaters', desc:'7 s on / 3 s off × 6, sub-max' }
+    ],
+    /* Which of the two the session was, because the grades are two
+       different ladders and a number off the wrong one is worse than no
+       number at all. A day that was genuinely both is two logs — which
+       is also the truthful answer, since they were two sessions. */
+    climbing: [
+      { id:'climbRoutes',  name:'Routes',     desc:'Ropes — sport, trad, top rope' },
+      { id:'climbBoulder', name:'Bouldering', desc:'Problems, indoors or out' }
     ]
   };
 
@@ -234,7 +253,17 @@
     boulder4x4:  [ ['climbs','The four problems','climbs','boulder'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
     wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','duration',240], ['restSec','Rest','duration',300], ['rpe','Effort','rpe',4] ],
     longboulder: [ ['climbs','Problems','climbs','boulder'], ['moves','Moves each','number',20], ['rpe','Effort','rpe',4] ],
-    repeaters:   [ ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm'], ['load','Load','kg',8], ['sets','Sets','number',6], ['rpe','Effort','rpe',4] ]
+    repeaters:   [ ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm'], ['load','Load','kg',8], ['sets','Sets','number',6], ['rpe','Effort','rpe',4] ],
+
+    /* Going climbing. The same shape as Routes, because it is the same
+       question — what did you climb, for how long, how hard did it feel
+       — and none of it is prescribed, so there is nothing to compare
+       against and nothing to fill in for the sake of it. Metres are
+       asked for on a rope and not on a boulder: nobody counts the
+       vertical on a problem, and a box nobody fills is a box that
+       teaches people to skip past the ones that matter. */
+    climbRoutes:  [ ['climbs','What you climbed','climbs','route'], ['metres','Distance climbed','metres',null], ['durationSec','Time on the wall','duration',120*60], ['rpe','Effort','rpe',3] ],
+    climbBoulder: [ ['climbs','What you climbed','climbs','boulder'], ['durationSec','Time on the wall','duration',90*60], ['rpe','Effort','rpe',3] ]
   };
 
   /* ── a list of climbs ─────────────────────────────────────
@@ -550,12 +579,10 @@
       sessions.push(ses); slot.sessionId = ses.id;
     });
 
-    /* ── endurance / PE history ── */
-    slots.filter(s => s.status === 'completed' && s.type !== 'strength').forEach(slot => {
-      const list = CT.MODALITIES[slot.type];
-      const mod = list[Math.floor(rand() * list.length)];
+    /* ── endurance / PE / climbing history ── */
+    function fieldsFor(modId) {
       const fields = {};
-      CT.FORMS[mod.id].forEach(([key,, kind, def]) => {
+      CT.FORMS[modId].forEach(([key,, kind, def]) => {
         if (kind === 'select') { const o = String(def).split(','); fields[key] = o[Math.floor(rand()*o.length)]; }
         else if (kind === 'choice') fields[key] = CT.CHOICES[def][Math.floor(rand() * CT.CHOICES[def].length)].id;
         else if (kind === 'rpe') {
@@ -587,9 +614,43 @@
         else if (kind === 'duration') fields[key] = Math.round(def * (0.85 + rand()*0.3) / 5) * 5;
         else fields[key] = Math.round(def * (0.85 + rand()*0.3));
       });
-      const ses = { id: uid('ses'), date: slot.date, type: slot.type, modality: mod.id, fields, notes:'' };
+      return fields;
+    }
+
+    /* One session against a slot, in whatever modality the type offers. */
+    function fill(slot) {
+      const list = CT.MODALITIES[slot.type];
+      const mod = list[Math.floor(rand() * list.length)];
+      const ses = { id: uid('ses'), date: slot.date, type: slot.type,
+                    modality: mod.id, fields: fieldsFor(mod.id), notes:'' };
       sessions.push(ses); slot.sessionId = ses.id;
-    });
+    }
+
+    slots.filter(s => s.status === 'completed' && s.type !== 'strength').forEach(fill);
+
+    /* ── climbing ──
+       Nobody plans these and no target counts them, so they are not in
+       the template and they arrive the way a real one does: a day that
+       was free, climbed anyway, logged afterwards. A slot is written
+       alongside the session because that is what logging one does —
+       S.logSession makes one when no open slot matches, so a mock world
+       without them would be a world the calendar renders differently
+       from the real thing.
+
+       The weekend, and whichever half of it the plan left alone: a
+       Saturday at the crag is the shape this takes, and a Saturday the
+       block already wants for something is why Sunday is asked next. */
+    for (let w = 1; w <= cfg.weeks; w++) {
+      if (rand() > 0.55) continue;
+      const wkStart = dt.addISO(blockStart, (w - 1) * 7);
+      const day = [5, 6].map(o => dt.addISO(wkStart, o))
+                        .find(d => d < todayISO && !slots.some(s => s.date === d));
+      if (!day) continue;
+      const slot = { id: uid('slot'), week: w, type: 'climbing', date: day,
+                     status: 'completed', sessionId: null, adhoc: true };
+      slots.push(slot);
+      fill(slot);
+    }
 
     /* ── bodyweight: weekly, mild trend + noise ── */
     const bodyweight = [];

@@ -165,24 +165,30 @@
       onclick: () => CT.openLog(type, {})
     }, [
       el('div', { class: 'row', style: 'gap:9px;margin-bottom:9px' }, [
-        el('span', { class: 'quick__dot quick__dot--' + (type === 'strength' ? 's' : type === 'pe' ? 'p' : 'e') }),
+        el('span', { class: 'quick__dot quick__dot--' + CT.TYPE[type].dot }),
         el('span', { class: 'eyebrow', text: 'Log' })
       ]),
       el('p', { style: 'font-size:15px;font-weight:600;letter-spacing:-.017em', text: label }),
       el('p', { class: 'tiny', style: 'margin-top:4px', text: sub })
     ]);
 
-    /* All three, whatever week the block is in. Power endurance done
-       before the plan asks for it is still power endurance done. */
+    /* All four, whatever week the block is in. Power endurance done
+       before the plan asks for it is still power endurance done, and
+       climbing nobody asked for is still climbing done. */
     const cards = [
       b('strength', 'Strength', 'Max hangs or limit bouldering'),
       b('endurance', 'Endurance', 'Routes, traversing, edge pulls…'),
       b('pe', 'Power Endurance', S.inPEPhase(c)
         ? '4×4s, wall crawls, repeaters'
-        : `4×4s, wall crawls, repeaters — outside the plan until week ${c.block.peFromWeek}`)
+        : `4×4s, wall crawls, repeaters — outside the plan until week ${c.block.peFromWeek}`),
+      b('climbing', 'Climbing', 'A session on the wall or at the crag')
     ];
 
-    return el('div', { class: 'grid', style: `grid-template-columns:repeat(${cards.length},1fr)` }, cards);
+    /* Sized by what fits rather than by how many there are: a fourth
+       card turned four equal columns into four unreadable ones on a
+       phone, and the count is now something this row can survive
+       changing. */
+    return el('div', { class: 'grid quicklog' }, cards);
   }
 
   CT.views.dashboard = function (host, c) {

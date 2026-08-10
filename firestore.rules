@@ -257,11 +257,14 @@ service cloud.firestore {
          opening plan can never be created in one batch: the plan would
          be checked against an athlete that does not exist yet. repo.js
          writes the record first for exactly this reason. */
+      /* The type list is the app's taxonomy, CT.TYPE, written out where
+         the server can check it. Adding a kind of session means adding
+         it here too, or every write of one is rejected. */
       match /slots/{slotId} {
         allow read: if isMember(aid);
         allow create, update: if isMember(aid)
           && request.resource.data.date is string
-          && request.resource.data.type in ['strength', 'endurance', 'pe'];
+          && request.resource.data.type in ['strength', 'endurance', 'pe', 'climbing'];
         allow delete: if isMember(aid);
       }
 
@@ -269,7 +272,7 @@ service cloud.firestore {
         allow read: if isMember(aid);
         allow create, update: if isMember(aid)
           && request.resource.data.date is string
-          && request.resource.data.type in ['strength', 'endurance', 'pe'];
+          && request.resource.data.type in ['strength', 'endurance', 'pe', 'climbing'];
         allow delete: if isMember(aid);
       }
 

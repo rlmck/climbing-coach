@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v29';
+const CACHE = 'coach-v30';
 
 /* Which build is actually running, asked for by the app and shown in the
    sidebar. "Is my phone up to date" is otherwise unanswerable from the

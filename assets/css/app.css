@@ -34,6 +34,8 @@
   --clay:        #A94436;   /* failed / missed              */
   --clay-tint:   #FBEDEB;
 
+  --slate:       #3A6183;   /* climbing — logged, not asked for */
+
   /* type */
   --sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -127,6 +129,7 @@ svg{ display:block; }
 .quick__dot--s{ background:var(--spruce); }
 .quick__dot--e{ background:var(--ink-4); }
 .quick__dot--p{ background:var(--ember); }
+.quick__dot--c{ background:var(--slate); }
 
 .rail__foot{ margin-top:auto; padding-top:28px; }
 .switcher{ display:flex; flex-direction:column; gap:2px; }
@@ -203,6 +206,11 @@ svg{ display:block; }
 .stack{ display:flex; flex-direction:column; }
 .row{ display:flex; align-items:center; }
 .grid{ display:grid; gap:14px; }
+/* The row of "log a session" cards. Four across on a desk, two by two
+   on a phone — decided by the width available rather than by how many
+   kinds of session exist, which is what turned a fourth card into four
+   unreadable columns on the phone the day it was added. */
+.quicklog{ grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
 
 /* the `display` below outranks the UA's [hidden] rule, so restore it —
    the sign-in card hides buttons rather than rebuilding itself */
@@ -489,6 +497,7 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .slot__bar{ position:absolute; left:0; top:9px; bottom:9px; width:2.5px; border-radius:2px; background:var(--ink-4); }
 .slot--strength .slot__bar{ background:var(--spruce); }
 .slot--pe .slot__bar{ background:var(--ember); }
+.slot--climbing .slot__bar{ background:var(--slate); }
 .slot--done{ background:var(--spruce-tint); box-shadow:none; cursor:default; }
 .slot--done .slot__type{ color:var(--spruce-ink); }
 .slot--done .slot__meta{ color:var(--spruce); }
