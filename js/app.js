@@ -311,6 +311,9 @@
 
   function renderTopbar() {
     const bar = CT.ui.clear(CT.ui.$('#topbar'));
+    /* clear() empties the bar but leaves its classes; this one is
+       decided again further down, every render */
+    bar.classList.remove('has-switcher');
     const r = ROUTES[CT.state.route] || ROUTES.dashboard;
     const c = S.client();
     /* Looking at somebody else's record — as opposed to their own,
@@ -322,10 +325,15 @@
       onclick: () => toggleRail()
     }, [ icon('people') ]));
 
-    bar.appendChild(el('h1', { class: 'h-page', text: coachViewing && c ? `${c.name} · ${r.title}` : r.title }));
+    /* The name is its own span so a phone can drop it. Down there the
+       switcher below carries it — the athlete's name in both places is
+       what pushed the title onto three lines. */
+    bar.appendChild(el('h1', { class: 'h-page' }, coachViewing && c
+      ? [ el('span', { class: 'h-page__who', text: c.name + ' · ' }), r.title ]
+      : [ r.title ]));
 
     if (CT.state.route !== 'clients' && c) {
-      bar.appendChild(el('span', { class: 'chip', style: 'margin-left:2px',
+      bar.appendChild(el('span', { class: 'chip topbar__wk', style: 'margin-left:2px',
         text: `Week ${S.currentWeek(c)}/${c.block.weeks}` }));
     }
 
@@ -343,6 +351,10 @@
           el('button', { text: e.label, 'aria-pressed': String(e.id === CT.state.activeClient),
             onclick: () => { if (S.setViewing(e.id)) render(); } })
         )));
+        /* Says the bar is already naming whoever is on screen, so the
+           narrow layout can stop the title and the week chip saying it
+           again over the top of it. */
+        bar.classList.add('has-switcher');
       }
     }
   }

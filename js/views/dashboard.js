@@ -3,7 +3,7 @@
    targets, and the shortest possible path into a log.
    ═══════════════════════════════════════════════════════════════ */
 (function () {
-  const CT = window.CT, { el, icon, motion, ring } = CT.ui, S = CT.store, dt = CT.dt;
+  const CT = window.CT, { el, icon, motion, ring, toast } = CT.ui, S = CT.store, dt = CT.dt;
 
   /* ── the block ribbon: one segment per week, tinted for phase ── */
   function ribbon(c) {
@@ -157,6 +157,29 @@
     return el('div', { class: 'tiles' }, [ streakTile, bwTile, hangTile ]);
   }
 
+  /* Taking a planned session off the week, from the row it sits on.
+     Same arm-then-confirm as everywhere else that undoes work, and the
+     same call behind it as the plan's own sheet — one way of removing a
+     slot, reached from two screens. */
+  function removeSlotButton(c, slot) {
+    const T = CT.TYPE[slot.type];
+    /* Quiet rather than red: five of these sit on the home screen beside
+       five Log buttons, and dropping a suggestion is not the same weight
+       of act as deleting a session that happened. It colours up once
+       armed, which is when the weight arrives. */
+    const b = CT.armButton(() => {
+      if (!S.removeSlot(c, slot.id)) return;
+      CT.render(false);
+      toast(`Removed from ${S.whose(c)} plan`,
+        `${T.label} on ${dt.short(slot.date)} is gone. Nothing was logged.`);
+    }, 'Remove', 'Confirm?', 'btn btn--quiet btn--sm plan__rm', 'x');
+    /* On a phone the word comes off and the cross does the talking, so
+       the label has to be said here rather than read off the button. */
+    b.setAttribute('aria-label', `Remove ${T.label} on ${dt.short(slot.date)} from the plan`);
+    b.setAttribute('title', 'Remove from the plan — nothing logged is touched');
+    return b;
+  }
+
   /* ── this week ─────────────────────────────────────────── */
   function weekCard(c) {
     const cur = S.currentWeek(c);
@@ -183,14 +206,19 @@
           el('p', { class: 'plan__name', text: T.label }),
           el('p', { class: 'plan__detail', text: detail })
         ]),
-        el('div', { class: 'plan__act' }, [
-          status === 'completed'
-            ? el('button', { class: 'btn btn--ghost btn--sm', text: 'Edit',
-                onclick: () => CT.openLog(slot.type, { sessionId: slot.sessionId }) })
-            : el('button', { class: 'btn btn--ghost btn--sm',
+        el('div', { class: 'plan__act' }, status === 'completed'
+          ? [ el('button', { class: 'btn btn--ghost btn--sm', text: 'Edit',
+                onclick: () => CT.openLog(slot.type, { sessionId: slot.sessionId }) }) ]
+          /* A plan is a suggestion, and a suggestion that has been
+             overtaken — the session done a day early, the week that went
+             another way — should be as easy to drop as it was to make.
+             Removing takes the usual second tap and touches nothing that
+             was logged; a completed row has no Remove because what's
+             behind it is a real session, deleted from its own sheet. */
+          : [ removeSlotButton(c, slot),
+              el('button', { class: 'btn btn--ghost btn--sm',
                 onclick: () => CT.openLog(slot.type, { date: slot.date, slotId: slot.id }),
-                text: status === 'missed' ? 'Log it late' : 'Log' })
-        ])
+                text: status === 'missed' ? 'Log it late' : 'Log' }) ])
       ]);
     });
 
