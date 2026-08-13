@@ -253,71 +253,95 @@
         paint(rows.length - 1);
       } }, [ icon('plus'), 'Add a grade' ]);
 
+    /* Where a route is and how long it is, as one line. The search
+       results and the rows they turn into say exactly the same thing
+       about a route, so they say it through one function — two
+       versions of this drifted apart within a day of each other
+       existing, and the version in the row was the worse one. */
+    function routeMeta(route, length) {
+      return [
+        route.grade,
+        [ route.crag, route.area ].filter(Boolean).join(' › '),
+        length ? length + ' m' : null
+      ].filter(Boolean).join(' · ');
+    }
+
     /* ── one row ─────────────────────────────────────────────
-       Two shapes. A grade somebody chose is a dropdown, because the
-       ladder is the whole of what they're saying. A route out of the
-       guidebook is not: it has a name, a crag, a grade in whatever
-       system that crag is graded in, and a length. Its grade is a
-       fact rather than a choice, so it is shown and not offered. */
-    function routeRow(r, i) {
-      const known = typeof r.route.length === 'number' && r.route.length > 0;
+       Two shapes on one grid, so a list holding both lines up down
+       its edges instead of stepping in and out as the rows change
+       kind. Count first either way — the stepper is what says how
+       many, and the × that used to follow it only ever read properly
+       against a grade. Beside a route name it was a stray mark, and
+       keeping it for one kind of row and not the other was what put
+       the two kinds twenty pixels out of line with each other.
 
-      const lenBox = known ? null : el('input', {
-        class: 'input climbs__len', type: 'number', min: 1, max: 200, step: 1,
-        placeholder: '—', 'aria-label': 'Length of ' + r.route.name + ' in metres',
-        oninput: () => {
-          const m = Math.round(+lenBox.value);
-          r.route.length = isFinite(m) && m > 0 && m <= 200 ? m : null;
-          commit();
-        },
-        /* Shared only once it has stopped being typed. On `input` the
-           first digit of "24" is a 2, and a 2 is what everybody else
-           would then have been told the route is. */
-        onchange: () => {
-          if (typeof r.route.length === 'number') shareLength(r.route.id, r.route.length);
-        }
-      });
+       A grade somebody chose is a dropdown: the ladder is the whole
+       of what they're saying. A route out of the guidebook is a name
+       and a fact underneath it — its grade is not a choice, so it is
+       shown rather than offered.
 
-      const meta = [ r.route.crag, r.route.area ].filter(Boolean).join(' › ');
-
-      return el('div', { class: 'climbs__r climbs__r--route' }, [
+       The meta is one ellipsising line rather than a row of chips and
+       spans. Those wrapped, and a wrapped route row pushed the ones
+       under it around every time somebody typed. */
+    function rowShell(r, i, label, body, extra) {
+      return el('div', { class: 'climbs__r' + (r.route ? ' climbs__r--route' : '') }, [
         el('div', { class: 'stepper stepper--sm' }, [
           el('button', { type: 'button', onclick: () => step(r, -1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
           countNode(r),
           el('button', { type: 'button', onclick: () => step(r, 1), 'aria-label': 'One more' }, [ icon('plus') ])
         ]),
-        el('span', { class: 'climbs__x', text: '×' }),
-        el('div', { class: 'climbs__rt' }, [
-          el('p', { class: 'climbs__rn', text: r.route.name }),
-          el('div', { class: 'climbs__rmeta' }, [
-            el('span', { class: 'chip chip--grade', text: r.route.grade }),
-            el('span', { class: 'tiny', text: meta }),
-            known
-              ? el('span', { class: 'tiny climbs__rl', text: r.route.length + ' m' })
-              : el('span', { class: 'climbs__rl climbs__rl--ask' }, [
-                  lenBox, el('span', { class: 'tiny', text: 'm — not on record' })
-                ])
-          ])
-        ]),
-        el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove ' + r.route.name,
+        el('div', { class: 'climbs__body' }, extra ? [ body, extra ] : [ body ]),
+        el('button', { type: 'button', class: 'climbs__rm', 'aria-label': label,
           onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
       ]);
     }
 
-    function gradeRow(r, i) {
-      return el('div', { class: 'climbs__r' }, [
-        el('div', { class: 'stepper stepper--sm' }, [
-          el('button', { type: 'button', onclick: () => step(r, -1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
-          countNode(r),
-          el('button', { type: 'button', onclick: () => step(r, 1), 'aria-label': 'One more' }, [ icon('plus') ])
-        ]),
-        el('span', { class: 'climbs__x', text: '×' }),
-        el('select', { class: 'input climbs__g', 'aria-label': 'Grade',
-          onchange: e => { r.grade = e.target.value; commit(); } },
-          ladder.map(g => el('option', { value: g, text: g, selected: g === r.grade || null }))),
-        el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove this grade',
-          onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
+    function routeRow(r, i) {
+      const known = typeof r.route.length === 'number' && r.route.length > 0;
+
+      const body = el('div', { class: 'climbs__rt' }, [
+        el('p', { class: 'climbs__rn', text: r.route.name }),
+        el('p', { class: 'climbs__rmeta', text: routeMeta(r.route, known ? r.route.length : null) })
       ]);
+
+      /* A line of its own rather than a box wedged into the meta. It
+         is a question being asked, which is a different kind of thing
+         from the three facts above it, and it needs room to be one. */
+      let ask = null;
+      if (!known) {
+        const lenBox = el('input', {
+          class: 'input climbs__len', type: 'number', min: 1, max: 200, step: 1,
+          placeholder: '—', 'aria-label': 'Length of ' + r.route.name + ' in metres',
+          oninput: () => {
+            const m = Math.round(+lenBox.value);
+            r.route.length = isFinite(m) && m > 0 && m <= 200 ? m : null;
+            commit();
+          },
+          /* Shared only once it has stopped being typed. On `input` the
+             first digit of "24" is a 2, and a 2 is what everybody else
+             would then have been told the route is. */
+          onchange: () => {
+            if (typeof r.route.length === 'number') shareLength(r.route.id, r.route.length);
+          }
+        });
+        /* Box first, explanation after. The other way round the note
+           took the whole width on a phone and left the input stranded
+           on a line of its own. */
+        ask = el('div', { class: 'climbs__ask' }, [
+          lenBox,
+          el('span', { class: 'tiny', text: 'm' }),
+          el('span', { class: 'tiny climbs__asknote', text: 'no length on record' })
+        ]);
+      }
+
+      return rowShell(r, i, 'Remove ' + r.route.name, body, ask);
+    }
+
+    function gradeRow(r, i) {
+      const select = el('select', { class: 'input climbs__g', 'aria-label': 'Grade',
+        onchange: e => { r.grade = e.target.value; commit(); } },
+        ladder.map(g => el('option', { value: g, text: g, selected: g === r.grade || null })));
+      return rowShell(r, i, 'Remove this grade', select, null);
     }
 
     function countNode(r) {
@@ -418,9 +442,8 @@
           results.appendChild(el('button', { type: 'button', class: 'rsearch__r',
             onclick: () => { pick(r); toggle(false); box.value = ''; run(); } }, [
             el('p', { class: 'rsearch__n', text: r.name }),
-            el('p', { class: 'rsearch__d', text:
-              [ r.grade, r.crag + (r.area ? ' › ' + r.area : ''),
-                len ? len + ' m' : 'no length on record' ].join(' · ') })
+            el('p', { class: 'rsearch__d',
+              text: routeMeta(r, len) + (len ? '' : ' · no length on record') })
           ]));
         });
       }

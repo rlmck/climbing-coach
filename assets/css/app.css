@@ -362,9 +362,17 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 /* ── what you actually climbed ──────────────────────────── */
 .climbs{ display:flex; flex-direction:column; gap:9px; }
 .climbs__list{ display:flex; flex-direction:column; gap:7px; }
-.climbs__r{ display:flex; align-items:center; gap:9px; }
-.climbs__x{ font-size:13px; color:var(--ink-4); flex:none; }
-.climbs__g{ flex:1; min-width:0; }
+/* One grid and one treatment for both kinds of row, so a list holding a
+   named route above a hand-typed grade lines up down its edges and reads
+   as one list. Tinting only the routes made a mixed list look like two
+   half-finished ones. */
+.climbs__r{
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center; gap:10px;
+  background:var(--surface-2); border-radius:var(--r-sm); padding:7px 8px;
+}
+.climbs__body{ min-width:0; display:flex; flex-direction:column; gap:6px; }
+.climbs__g{ width:100%; max-width:190px; }
 .climbs__n{ min-width:24px; }
 .climbs__rm{
   flex:none; width:30px; height:30px; border-radius:8px; display:grid; place-items:center;
@@ -373,8 +381,11 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .climbs__rm svg{ width:14px; height:14px; }
 .climbs__rm:hover{ background:var(--clay-tint); color:var(--clay); }
 .climbs__none{ padding:4px 0; }
-.climbs__ft{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.climbs__add{ box-shadow:inset 0 0 0 1px var(--line-2); }
+/* Two buttons and a count. The buttons hold together and the count is
+   what wraps, because a footer that breaks between "Add a grade" and
+   "Find a route" reads as two unrelated controls. */
+.climbs__ft{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.climbs__add{ flex:none; box-shadow:inset 0 0 0 1px var(--line-2); }
 .climbs__sum{
   margin-left:auto; font-family:var(--mono); font-size:11px;
   letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3);
@@ -385,25 +396,29 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 
 /* ── a row that came out of the guidebook ────────────────────
    Taller than a hand-typed one, because it has more to say: a name,
-   where it is, and how long it is. The grade is shown rather than
-   offered — it isn't a choice anybody is making here. */
-.climbs__r--route{ align-items:flex-start; padding:2px 0; }
-.climbs__r--route .stepper--sm,
-.climbs__r--route .climbs__x{ margin-top:3px; }
-.climbs__rt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+   and underneath it the facts the guidebook holds. Same three columns
+   as every other row, which is the whole point. */
+.climbs__rt{ min-width:0; display:flex; flex-direction:column; gap:2px; }
 .climbs__rn{
   font-size:13.5px; font-weight:600; letter-spacing:-.015em; color:var(--ink);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
-.climbs__rmeta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
-.climbs__rmeta .tiny{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-/* A grade is written the way its system writes it. The chip's usual
-   uppercasing turns 6b+ into 6B+ and f6A into F6A, which are two
-   other grades on two other scales. */
-.chip--grade{ text-transform:none; letter-spacing:.02em; font-size:11.5px; }
-.climbs__rl{ flex:none; }
-.climbs__rl--ask{ display:inline-flex; align-items:center; gap:6px; }
-.climbs__len{ width:58px; height:28px; padding:0 8px; font-size:13px; text-align:center; }
+/* One line, ellipsised. It was a wrapping row of chips and spans, and
+   every route long enough to wrap shoved the rows under it down the
+   form as somebody typed. */
+.climbs__rmeta{
+  font-size:11.5px; color:var(--ink-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+/* The question, on its own line — it is a different kind of thing from
+   the facts above it and was unreadable wedged in among them. The note
+   is what wraps away on a narrow screen; the box never does. */
+.climbs__ask{ display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.climbs__asknote{ min-width:0; }
+.climbs__len{
+  width:62px; height:30px; padding:0 8px; font-size:13px; text-align:center;
+  font-variant-numeric:tabular-nums;
+}
 
 /* ── finding one ─────────────────────────────────────────────
    Unfolds inside the form rather than over it: a sheet can't open on
@@ -435,12 +450,17 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 
 @media (max-width: 420px){
   .rsearch__hd{ grid-template-columns:1fr; }
-  /* The stepper and the route stack side by side leaves the name about
-     nine characters. It gets the full width instead, and the count
-     moves under it. */
-  .climbs__r--route{ flex-wrap:wrap; }
-  .climbs__r--route .climbs__x{ display:none; }
-  .climbs__rt{ flex:1 0 100%; order:-1; }
+  /* A stepper, a ×, a name and a remove button across a phone leaves
+     the name about nine characters. So the route takes the full width
+     and its controls sit underneath — the one row on this form with
+     enough in it to need two lines of its own. */
+  .climbs__r--route{
+    grid-template-areas: "body body body" "step . rm";
+    row-gap:9px;
+  }
+  .climbs__r--route .climbs__body{ grid-area:body; }
+  .climbs__r--route .stepper--sm{ grid-area:step; }
+  .climbs__r--route .climbs__rm{ grid-area:rm; }
 }
 
 /* segmented control */

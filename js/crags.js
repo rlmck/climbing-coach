@@ -113,10 +113,20 @@
        problems are separate logs on separate ladders, and a route
        search that surfaced 511 boulder problems — or a boulder search
        that surfaced the sport routes above them — would be offering
-       the wrong half of the crag every time. A modality that isn't
-       listed gets no search at all, which is how the two indoor
-       modalities stay exactly as they were. */
+       the wrong half of the crag every time.
+
+       Endurance laps are here too. "Routes" under Endurance is the
+       same act as "Routes" under Climbing — laps on route terrain —
+       and the reason to log one rather than the other is what the
+       session was for, not where it happened. Plenty of endurance
+       volume gets done outdoors, and a search that refused it would
+       be drawing a line the training doesn't.
+
+       A modality that isn't listed gets no search, which is what
+       keeps it off the traverse and hangboard forms where a named
+       route would mean nothing. */
     SEARCHABLE: {
+      routes:       ['french', 'uk'],
       climbRoutes:  ['french', 'uk'],
       climbBoulder: ['font', 'v']
     },
