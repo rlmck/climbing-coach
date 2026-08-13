@@ -308,6 +308,34 @@ service cloud.firestore {
       }
     }
 
+    /* ── how long a route is ───────────────────────────────────
+       The one collection here that belongs to nobody. A crag is a
+       fact about the world rather than about an athlete, so the
+       lengths sit outside the athlete records and everyone signed in
+       can read them.
+
+       The guidebook shipped with the app already knows most of them.
+       This holds the ones it left blank, filled in by whoever first
+       climbed one and noticed — which is why `create` is open to any
+       account and `update` is not. Firestore only applies `create` to
+       a document that does not exist yet, so the split is exactly
+       "anyone may fill a blank; only a coach may change an answer".
+       A mistyped 240 can then be corrected, and cannot quietly
+       replace a good number that somebody else measured.
+
+       The id is the app's own route slug — crag, area and name — so
+       a document here is worthless without the guidebook to read it
+       against, and holds nothing about who climbed what. */
+    match /routeLengths/{routeId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.m is number
+        && request.resource.data.m > 0
+        && request.resource.data.m <= 200
+        && request.resource.data.by == uid();
+      allow update, delete: if isCoach();
+    }
+
     /* Anything not named above is closed. */
     match /{document=**} {
       allow read, write: if false;

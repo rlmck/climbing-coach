@@ -158,9 +158,18 @@
 
   /* ── grade ladders ────────────────────────────────────────
      Ordered hardest-last, because "hardest thing climbed" is an index
-     comparison everywhere it's asked for. */
+     comparison everywhere it's asked for.
+
+     The route ladder is full French. It used to open '4', '4+', '5a'
+     and stop at 8a — a shorthand that was fine while every grade on it
+     was typed by hand, and stopped being fine the moment real routes
+     arrived: Portland is graded 2a to 8b, and 118 of its routes had
+     nowhere to sit. Sessions recorded under the old shorthand are
+     translated on the way in rather than rewritten — see LEGACY_GRADE
+     below. */
   CT.GRADES = {
-    route:   ['4','4+','5a','5b','5c','6a','6a+','6b','6b+','6c','6c+','7a','7a+','7b','7b+','7c','7c+','8a'],
+    route:   ['3a','3b','3c','4a','4b','4c','5a','5b','5c','6a','6a+','6b','6b+',
+              '6c','6c+','7a','7a+','7b','7b+','7c','7c+','8a','8a+','8b'],
     boulder: ['V0','V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12']
   };
   CT.GRADE_DEFAULT = { route:'6a', boulder:'V4' };
@@ -268,8 +277,44 @@
 
   /* ── a list of climbs ─────────────────────────────────────
      [{ grade:'6a', count:2 }, …] — the honest shape of a session,
-     rather than the hardest thing in it standing in for the rest. */
+     rather than the hardest thing in it standing in for the rest.
+
+     A row picked out of the guidebook carries a `route` as well, and
+     may carry no `grade` at all: UK trad sits on no ladder the app
+     has, so the rung is left null and the route's own grade is the
+     only one there is. Everything here has to read the grade through
+     `label` for that reason — `hardest` is the exception, and it is
+     the exception on purpose, because a row with no rung is precisely
+     a row that shouldn't win a comparison. */
   CT.climbs = {
+    /* What this row says it was, in the words it was graded in. */
+    label(row) {
+      if (!row) return null;
+      return (row.route && row.route.grade) || row.grade || null;
+    },
+    /* Metres off the guidebook, for the rows that came from it. A row
+       with no route, or a route nobody has measured, adds nothing —
+       not zero, nothing, which is the same distinction the metres box
+       has always made. */
+    metres(list) {
+      return (list || []).reduce((a, r) => {
+        const len = r.route && typeof r.route.length === 'number' ? r.route.length : 0;
+        return a + len * (r.count || 0);
+      }, 0);
+    },
+    /* Where the session was, when the rows know. The first crag named,
+       and a count of the others — a day that wandered from Blacknor to
+       Battleship is two crags, and naming both in a summary line that
+       also has to fit a grade and a distance is how a summary stops
+       being one. */
+    venues(list) {
+      const out = [];
+      (list || []).forEach(r => {
+        const crag = r.route && r.route.crag;
+        if (crag && out.indexOf(crag) < 0) out.push(crag);
+      });
+      return out;
+    },
     total(list) { return (list || []).reduce((a, r) => a + (r.count || 0), 0); },
     hardest(list, set) {
       const ladder = CT.GRADES[set] || CT.GRADES.route;
@@ -282,10 +327,11 @@
       return best < 0 ? null : ladder[best];
     },
     /* "2 × 6a · 3 × 6a+ · 4 × 5c" — in the order they were entered,
-       because that is the order they were climbed in. */
+       because that is the order they were climbed in. A row with no
+       grade of any kind is skipped rather than printed as "1 × null". */
     text(list) {
-      return (list || []).filter(r => r.count > 0)
-        .map(r => r.count + ' × ' + r.grade).join(' · ');
+      return (list || []).filter(r => r.count > 0 && CT.climbs.label(r))
+        .map(r => r.count + ' × ' + CT.climbs.label(r)).join(' · ');
     },
     short(list, set) {
       const n = CT.climbs.total(list);
@@ -345,6 +391,12 @@
     longboulder: { climbs:{ grade:'grade', count:'problems', set:'boulder' } }
   };
 
+  /* The route ladder's old shorthand at its easy end, in French. '4'
+     covered what French calls 4a and 4b, and '4+' what it calls 4c;
+     each maps to the softer of the pair, because a translation that
+     rounds up hands an athlete a grade they never claimed. */
+  const LEGACY_GRADE = { '4': '4a', '4+': '4c' };
+
   CT.migrateFields = function (modality, fields) {
     if (!fields) return fields;
     const spec = LEGACY[modality];
@@ -371,6 +423,19 @@
         if (cs.count) delete o[cs.count];
       }
     }
+
+    /* The route ladder's two shorthand rungs, translated to the French
+       they always meant. Left alone they would be grades off no ladder:
+       the picker would fall back to its first option and quietly
+       re-record a 4 as a 3a on the next edit, and the hardest-climbed
+       line would skip the row entirely. Read-time only — what somebody
+       recorded stays recorded. */
+    const climbs = f.climbs;
+    if (Array.isArray(climbs) && climbs.some(r => r && LEGACY_GRADE[r.grade])) {
+      own().climbs = climbs.map(r => r && LEGACY_GRADE[r.grade]
+        ? Object.assign({}, r, { grade: LEGACY_GRADE[r.grade] }) : r);
+    }
+    if (LEGACY_GRADE[fields.grade]) own().grade = LEGACY_GRADE[fields.grade];
 
     /* Halving is the only mapping off the ten-point scale that keeps
        the ordering intact. Applied here rather than written back —

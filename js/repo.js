@@ -457,6 +457,10 @@
 
     const first = new Promise(res => { repo._resolveFirst = res; });
     watchRoster();
+    /* Not awaited: the guidebook already has most of the lengths, and
+       the handful this adds are wanted by a log sheet nobody has
+       opened yet. Boot doesn't wait on it. */
+    repo.loadRouteLengths();
     /* don't hang the boot on a cold cache and no signal */
     await Promise.race([first, new Promise(res => setTimeout(res, 4000))]);
     return repo.profile;
@@ -556,6 +560,48 @@
   repo.deleteCFTest = function (c, id) {
     if (!repo.enabled) return;
     push(F().deleteDoc(ref(c.id, 'criticalForce', id)), 'that deletion');
+  };
+
+  /* ═════════════════ how long a route is ═════════════════
+     The one collection outside the athlete records. A crag is a fact
+     about the world, so the lengths belong to everybody who can see
+     it, and none of this is anybody's training data.
+
+     Read once at sign-in rather than listened to. It only holds the
+     blanks the shipped guidebook left, it changes at the rate somebody
+     climbs an unmeasured route, and a live listener on it would be a
+     socket held open for a number that will be the same tomorrow. */
+  repo.loadRouteLengths = async function () {
+    if (!repo.enabled || !CT.crags) return;
+    try {
+      const { getDocs, collection } = F();
+      const snap = await getDocs(collection(fb().db, 'routeLengths'));
+      snap.docs.forEach(d => {
+        const m = d.data().m;
+        if (typeof m === 'number' && m > 0) CT.crags.overrides[d.id] = m;
+      });
+      if (snap.size) scheduleRender();
+    } catch (err) {
+      /* Nothing to say. Every length the guidebook already knows still
+         works, and the ones it doesn't stay blank — which is exactly
+         where they were a moment ago. */
+      console.warn('[repo] route lengths:', err.code || err.message);
+    }
+  };
+
+  /* Filling in a blank, for everybody. Deliberately not through push():
+     the expected failures here are a second person filling the same
+     blank first and a phone at the bottom of a cliff with no signal,
+     and neither is worth interrupting somebody mid-log to report. The
+     length is already on their own session either way — this is the
+     part that was a bonus. */
+  repo.saveRouteLength = function (id, m) {
+    if (!repo.enabled || !id) return;
+    if (typeof m !== 'number' || !(m > 0) || m > 200) return;
+    const { doc, setDoc, serverTimestamp } = F();
+    setDoc(doc(fb().db, 'routeLengths', id),
+      { m: Math.round(m), by: repo.user.uid, at: serverTimestamp() })
+      .catch(err => console.warn('[repo] route length ' + id + ':', err.code || err.message));
   };
 
   /* Only the fields a coach or athlete can actually change. members,

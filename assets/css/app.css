@@ -383,6 +383,66 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .stepper--sm button{ width:24px; height:24px; }
 .stepper--sm span{ min-width:24px; font-size:13.5px; }
 
+/* ── a row that came out of the guidebook ────────────────────
+   Taller than a hand-typed one, because it has more to say: a name,
+   where it is, and how long it is. The grade is shown rather than
+   offered — it isn't a choice anybody is making here. */
+.climbs__r--route{ align-items:flex-start; padding:2px 0; }
+.climbs__r--route .stepper--sm,
+.climbs__r--route .climbs__x{ margin-top:3px; }
+.climbs__rt{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.climbs__rn{
+  font-size:13.5px; font-weight:600; letter-spacing:-.015em; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.climbs__rmeta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+.climbs__rmeta .tiny{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* A grade is written the way its system writes it. The chip's usual
+   uppercasing turns 6b+ into 6B+ and f6A into F6A, which are two
+   other grades on two other scales. */
+.chip--grade{ text-transform:none; letter-spacing:.02em; font-size:11.5px; }
+.climbs__rl{ flex:none; }
+.climbs__rl--ask{ display:inline-flex; align-items:center; gap:6px; }
+.climbs__len{ width:58px; height:28px; padding:0 8px; font-size:13px; text-align:center; }
+
+/* ── finding one ─────────────────────────────────────────────
+   Unfolds inside the form rather than over it: a sheet can't open on
+   top of a sheet without taking the half-filled log with it. */
+.rsearch{
+  border:1px solid var(--line); border-radius:var(--r-sm);
+  background:var(--surface-2); padding:10px; overflow:hidden;
+}
+.rsearch__hd{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:8px; }
+.rsearch__list{
+  margin-top:8px; max-height:264px; overflow-y:auto;
+  display:flex; flex-direction:column; gap:2px;
+  -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+}
+.rsearch__r{
+  display:block; width:100%; text-align:left; background:none; border:0; font:inherit;
+  color:inherit; cursor:pointer; padding:8px 9px; border-radius:var(--r-xs);
+  transition:background .14s;
+}
+.rsearch__r:hover, .rsearch__r:focus-visible{ background:var(--surface-3); }
+.rsearch__n{
+  font-size:13.5px; font-weight:600; letter-spacing:-.015em;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.rsearch__d{
+  margin-top:2px; font-size:11.5px; color:var(--ink-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+@media (max-width: 420px){
+  .rsearch__hd{ grid-template-columns:1fr; }
+  /* The stepper and the route stack side by side leaves the name about
+     nine characters. It gets the full width instead, and the count
+     moves under it. */
+  .climbs__r--route{ flex-wrap:wrap; }
+  .climbs__r--route .climbs__x{ display:none; }
+  .climbs__rt{ flex:1 0 100%; order:-1; }
+}
+
 /* segmented control */
 .seg{
   display:inline-flex; padding:3px; gap:2px;

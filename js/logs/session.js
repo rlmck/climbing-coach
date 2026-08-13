@@ -158,32 +158,65 @@
      empty box is stored as nothing, not as zero. A session with no
      distance against it wasn't measured, which is a different fact
      from a session where nothing was climbed. */
+  /* Routes picked out of the guidebook carry their own lengths, so the
+     box can fill itself — but only until somebody disagrees with it.
+     `touched` is that line: once a number has been typed here by hand
+     it is an answer, and an answer is not something the app gets to
+     overwrite because a row moved. A total that no longer matches is
+     then offered rather than applied, which is the difference between
+     a convenience and a correction nobody asked for.
+
+     A session opened for editing arrives touched, because whatever is
+     on the record was typed by somebody once already. */
   function metresControl(init, set) {
+    let touched = CT.metres(init) !== null;
+    let fromRoutes = 0;
+
     const input = el('input', { class: 'input', type: 'number', min: 0, step: 10,
       placeholder: 'Leave blank if you didn’t count',
       value: CT.metres(init) || '',
-      oninput: read });
+      oninput: () => { touched = true; read(); } });
 
     const note = el('p', { class: 'tiny' });
+    const use = el('button', { type: 'button', class: 'btn btn--quiet btn--sm', style: 'display:none',
+      onclick: () => { input.value = fromRoutes; touched = false; read(); } });
 
     function read() {
       /* One normaliser, shared with the line that prints it back — the
          rule that blank is not zero has to mean the same thing in both
          places or a distance can be stored that can never be shown. */
       const value = CT.metres(+input.value);
-      note.textContent = value === null
-        ? 'Optional, and so are the grades above — record either, both or neither.'
+      const matches = value === fromRoutes;
+      const offer = fromRoutes > 0 && !matches;
+
+      use.style.display = offer ? '' : 'none';
+      if (offer) use.textContent = 'Use ' + fromRoutes + ' m';
+
+      note.textContent =
+        offer && value === null ? `The routes you picked add up to ${fromRoutes} m.`
+        : offer                 ? `${value} m recorded — the routes you picked add up to ${fromRoutes} m.`
+        : matches && value      ? `${value} m, added up from the routes you picked.`
+        : value === null        ? 'Optional, and so are the grades above — record either, both or neither.'
         : value + ' m of climbing on the record for this session.';
       set(value);
     }
     read();
 
-    return el('div', { class: 'stack', style: 'gap:7px' }, [
+    const node = el('div', { class: 'stack', style: 'gap:7px' }, [
       el('div', { class: 'row', style: 'gap:9px' }, [
-        input, el('span', { class: 'readout__u', style: 'flex:none', text: 'm' })
+        input, el('span', { class: 'readout__u', style: 'flex:none', text: 'm' }), use
       ]),
       note
     ]);
+
+    /* What the climbs above it add up to, handed down every time they
+       change. Nothing is filled in once the box has been typed in. */
+    node.auto = function (metres) {
+      fromRoutes = Math.max(0, Math.round(metres || 0));
+      if (!touched) input.value = fromRoutes || '';
+      read();
+    };
+    return node;
   }
 
   /* ── what you actually climbed ───────────────────────────
@@ -192,62 +225,228 @@
      volume — which for endurance work is the point of the session.
      Rows in the order they were entered, because that is the order
      they were climbed in. */
-  function climbsControl(ladderName, init, set) {
+  function climbsControl(ladderName, init, set, opts) {
+    const o = opts || {};
     const ladder = CT.GRADES[ladderName] || CT.GRADES.route;
+    /* Which half of the guidebook this log is allowed to search, or
+       nothing at all — indoor modalities keep the control they had. */
+    const systems = CT.crags ? CT.crags.systemsFor(o.modality) : null;
+
+    /* A row survives if it says what was climbed: a grade off the
+       ladder, or a route out of the guidebook. Trad has the second
+       without the first, which is exactly why the test is an either. */
     const rows = (Array.isArray(init) ? init : [])
-      .filter(r => r && r.grade)
-      .map(r => ({ grade: r.grade, count: Math.max(1, r.count || 1) }));
+      .filter(r => r && (r.grade || (r.route && r.route.name)))
+      .map(r => ({
+        grade: r.grade || null,
+        count: Math.max(1, r.count || 1),
+        route: r.route ? Object.assign({}, r.route) : null
+      }));
 
     const list = el('div', { class: 'climbs__list' });
     const summary = el('p', { class: 'climbs__sum' });
     const add = el('button', { type: 'button', class: 'btn btn--quiet btn--sm climbs__add',
       onclick: () => {
-        const last = rows[rows.length - 1];
-        rows.push({ grade: last ? last.grade : (CT.GRADE_DEFAULT[ladderName] || ladder[0]), count: 1 });
+        const last = rows.filter(r => !r.route).pop();
+        rows.push({ grade: last ? last.grade : (CT.GRADE_DEFAULT[ladderName] || ladder[0]),
+                    count: 1, route: null });
         paint(rows.length - 1);
       } }, [ icon('plus'), 'Add a grade' ]);
 
+    /* ── one row ─────────────────────────────────────────────
+       Two shapes. A grade somebody chose is a dropdown, because the
+       ladder is the whole of what they're saying. A route out of the
+       guidebook is not: it has a name, a crag, a grade in whatever
+       system that crag is graded in, and a length. Its grade is a
+       fact rather than a choice, so it is shown and not offered. */
+    function routeRow(r, i) {
+      const known = typeof r.route.length === 'number' && r.route.length > 0;
+
+      const lenBox = known ? null : el('input', {
+        class: 'input climbs__len', type: 'number', min: 1, max: 200, step: 1,
+        placeholder: '—', 'aria-label': 'Length of ' + r.route.name + ' in metres',
+        oninput: () => {
+          const m = Math.round(+lenBox.value);
+          r.route.length = isFinite(m) && m > 0 && m <= 200 ? m : null;
+          commit();
+        },
+        /* Shared only once it has stopped being typed. On `input` the
+           first digit of "24" is a 2, and a 2 is what everybody else
+           would then have been told the route is. */
+        onchange: () => {
+          if (typeof r.route.length === 'number') shareLength(r.route.id, r.route.length);
+        }
+      });
+
+      const meta = [ r.route.crag, r.route.area ].filter(Boolean).join(' › ');
+
+      return el('div', { class: 'climbs__r climbs__r--route' }, [
+        el('div', { class: 'stepper stepper--sm' }, [
+          el('button', { type: 'button', onclick: () => step(r, -1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
+          countNode(r),
+          el('button', { type: 'button', onclick: () => step(r, 1), 'aria-label': 'One more' }, [ icon('plus') ])
+        ]),
+        el('span', { class: 'climbs__x', text: '×' }),
+        el('div', { class: 'climbs__rt' }, [
+          el('p', { class: 'climbs__rn', text: r.route.name }),
+          el('div', { class: 'climbs__rmeta' }, [
+            el('span', { class: 'chip chip--grade', text: r.route.grade }),
+            el('span', { class: 'tiny', text: meta }),
+            known
+              ? el('span', { class: 'tiny climbs__rl', text: r.route.length + ' m' })
+              : el('span', { class: 'climbs__rl climbs__rl--ask' }, [
+                  lenBox, el('span', { class: 'tiny', text: 'm — not on record' })
+                ])
+          ])
+        ]),
+        el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove ' + r.route.name,
+          onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
+      ]);
+    }
+
+    function gradeRow(r, i) {
+      return el('div', { class: 'climbs__r' }, [
+        el('div', { class: 'stepper stepper--sm' }, [
+          el('button', { type: 'button', onclick: () => step(r, -1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
+          countNode(r),
+          el('button', { type: 'button', onclick: () => step(r, 1), 'aria-label': 'One more' }, [ icon('plus') ])
+        ]),
+        el('span', { class: 'climbs__x', text: '×' }),
+        el('select', { class: 'input climbs__g', 'aria-label': 'Grade',
+          onchange: e => { r.grade = e.target.value; commit(); } },
+          ladder.map(g => el('option', { value: g, text: g, selected: g === r.grade || null }))),
+        el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove this grade',
+          onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
+      ]);
+    }
+
+    function countNode(r) {
+      const n = el('span', { class: 'climbs__n', text: String(r.count) });
+      r._n = n;
+      return n;
+    }
+    function step(r, d) {
+      r.count = Math.max(1, Math.min(99, r.count + d));
+      r._n.textContent = String(r.count);
+      motion.pop(r._n, .7);
+      commit();
+    }
+
     function paint(focusRow) {
       CT.ui.clear(list);
-      rows.forEach((r, i) => {
-        const count = el('span', { class: 'climbs__n', text: String(r.count) });
-        const step = d => {
-          r.count = Math.max(1, Math.min(99, r.count + d));
-          count.textContent = String(r.count);
-          motion.pop(count, .7);
-          commit();
-        };
-        list.appendChild(el('div', { class: 'climbs__r' }, [
-          el('div', { class: 'stepper stepper--sm' }, [
-            el('button', { type: 'button', onclick: () => step(-1), 'aria-label': 'One fewer' }, [ icon('minus') ]),
-            count,
-            el('button', { type: 'button', onclick: () => step(1), 'aria-label': 'One more' }, [ icon('plus') ])
-          ]),
-          el('span', { class: 'climbs__x', text: '×' }),
-          el('select', { class: 'input climbs__g', 'aria-label': 'Grade',
-            onchange: e => { r.grade = e.target.value; commit(); } },
-            ladder.map(g => el('option', { value: g, text: g, selected: g === r.grade || null }))),
-          el('button', { type: 'button', class: 'climbs__rm', 'aria-label': 'Remove this grade',
-            onclick: () => { rows.splice(i, 1); paint(); } }, [ icon('x') ])
-        ]));
-      });
+      rows.forEach((r, i) => list.appendChild(r.route ? routeRow(r, i) : gradeRow(r, i)));
       if (!rows.length) list.appendChild(el('p', { class: 'tiny climbs__none',
-        text: 'Nothing added yet — one row per grade you climbed.' }));
+        text: systems
+          ? 'Nothing added yet — find the routes you climbed, or add grades by hand.'
+          : 'Nothing added yet — one row per grade you climbed.' }));
       commit();
       if (focusRow != null && motion.on) motion.pop(list.children[focusRow], .94);
     }
 
     function commit() {
-      const clean = rows.filter(r => r.count > 0).map(r => ({ grade: r.grade, count: r.count }));
+      const clean = rows.filter(r => r.count > 0).map(r => {
+        const out = { grade: r.grade || null, count: r.count };
+        if (r.route) out.route = {
+          id: r.route.id, name: r.route.name, crag: r.route.crag,
+          area: r.route.area || '', grade: r.route.grade,
+          length: typeof r.route.length === 'number' ? r.route.length : null
+        };
+        return out;
+      });
       const n = CT.climbs.total(clean);
       const top = CT.climbs.hardest(clean, ladderName);
+      /* Trad routes count as climbs and win no comparisons, so a day
+         entirely on them reads "4 climbs" with nothing after it. That
+         is the whole of what the app can honestly say about it. */
       summary.textContent = !n ? 'No climbs logged yet'
         : `${n} ${n === 1 ? 'climb' : 'climbs'}${top ? ' · hardest ' + top : ''}`;
       set(clean);
+      if (o.onMetres) o.onMetres(CT.climbs.metres(clean));
+    }
+
+    /* A length typed against a route the guidebook left blank. It
+       counts for this session either way; sharing it is a bonus that
+       is allowed to fail — no signal at the crag, or somebody else
+       filled the same blank first, and neither is worth a word on
+       screen while the athlete is mid-log. */
+    function shareLength(id, m) {
+      if (CT.crags) CT.crags.overrides[id] = m;
+      if (CT.repo && CT.repo.saveRouteLength) CT.repo.saveRouteLength(id, m);
     }
 
     paint();
-    return el('div', { class: 'climbs' }, [ list, el('div', { class: 'climbs__ft' }, [ add, summary ]) ]);
+
+    const foot = el('div', { class: 'climbs__ft' }, [ add, summary ]);
+    const wrap = el('div', { class: 'climbs' }, [ list, foot ]);
+    if (systems) buildSearch(wrap, foot, systems, route => {
+      rows.push({ grade: route.rung || null, count: 1, route: CT.crags.stored(route) });
+      paint(rows.length - 1);
+    });
+    return wrap;
+
+    /* ── finding a route ─────────────────────────────────────
+       Inline, because a sheet cannot open over a sheet — CT.sheet.open
+       closes whatever is already there, which would take the half-
+       filled log with it. So the picker unfolds inside the form, the
+       same way the effort scale does. */
+    function buildSearch(host, footer, systems, pick) {
+      let open = false;
+
+      const results = el('div', { class: 'rsearch__list' });
+      const cragSel = el('select', { class: 'input', 'aria-label': 'Crag',
+        onchange: run },
+        [ el('option', { value: '', text: 'All crags' }) ].concat(
+          CT.crags.cragsFor(systems).map(c => el('option', { value: c, text: c }))));
+
+      const box = el('input', { class: 'input', type: 'search', autocomplete: 'off',
+        placeholder: 'Route name', 'aria-label': 'Search ' + CT.crags.venue + ' by route name',
+        oninput: run,
+        onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const f = results.firstChild;
+                          if (f && f.tagName === 'BUTTON') f.click(); } } });
+
+      function run() {
+        const hits = CT.crags.search(box.value, { systems, crag: cragSel.value || null, limit: 25 });
+        CT.ui.clear(results);
+        if (!hits.length) {
+          results.appendChild(el('p', { class: 'tiny', style: 'padding:8px 2px',
+            text: box.value.trim() ? 'Nothing at ' + CT.crags.venue + ' by that name.'
+                                   : 'Type a route name.' }));
+          return;
+        }
+        hits.forEach(r => {
+          const len = CT.crags.length(r.id);
+          results.appendChild(el('button', { type: 'button', class: 'rsearch__r',
+            onclick: () => { pick(r); toggle(false); box.value = ''; run(); } }, [
+            el('p', { class: 'rsearch__n', text: r.name }),
+            el('p', { class: 'rsearch__d', text:
+              [ r.grade, r.crag + (r.area ? ' › ' + r.area : ''),
+                len ? len + ' m' : 'no length on record' ].join(' · ') })
+          ]));
+        });
+      }
+
+      const panel = el('div', { class: 'rsearch', style: 'display:none' }, [
+        el('div', { class: 'rsearch__hd' }, [ cragSel, box ]),
+        results
+      ]);
+
+      const find = el('button', { type: 'button', class: 'btn btn--quiet btn--sm climbs__add',
+        'aria-expanded': 'false', onclick: () => toggle(!open) },
+        [ icon('spark'), 'Find a route' ]);
+
+      function toggle(next) {
+        open = next;
+        find.setAttribute('aria-expanded', String(open));
+        motion.collapse(panel, open);
+        if (open) setTimeout(() => box.focus({ preventScroll: true }), 60);
+      }
+
+      /* Beside "Add a grade", not instead of it — a day at the crag is
+         usually some routes you can name and some you can't. */
+      footer.insertBefore(find, footer.firstChild.nextSibling);
+      host.appendChild(panel);
+      run();
+    }
   }
 
   /* ═══════════════ which kind of session? ═══════════════
@@ -632,6 +831,17 @@
          optional grade "absent" is itself an answer. */
       const held = k => prior && Object.prototype.hasOwnProperty.call(prior, k);
 
+      /* The climbs and the metres are two fields in the schema and one
+         answer in practice, once the climbs know how long they are.
+         They are built in schema order, and climbs comes first, so the
+         total arrives before there is anything to hand it to — it
+         waits here until the metres box exists. */
+      let metresNode = null, pendingMetres = null;
+      const toMetres = m => {
+        pendingMetres = m;
+        if (metresNode) metresNode.auto(m);
+      };
+
       CT.FORMS[modality].forEach(([key, label, kind, def]) => {
         const set = v => values[key] = v;
         const options = kind === 'select' ? String(def).split(',') : null;
@@ -661,10 +871,11 @@
         } else if (kind === 'grade') {
           control = gradeControl(def, init, set);
         } else if (kind === 'metres') {
-          control = metresControl(init, set);
+          control = metresNode = metresControl(init, set);
+          if (pendingMetres !== null) metresNode.auto(pendingMetres);
         } else if (kind === 'climbs') {
           wide = true;
-          control = climbsControl(def, init, set);
+          control = climbsControl(def, init, set, { modality, onMetres: toMetres });
         } else {
           set(init);
           control = el('div', { class: 'row', style: 'gap:9px' }, [

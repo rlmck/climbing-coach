@@ -255,6 +255,13 @@
 
     const bits = [];
     if (climbSpec && Array.isArray(f.climbs)) {
+      /* Where it was, when the routes say so. A day at the crag is
+         better identified by the crag than by anything else on the
+         line, so it leads — and a day that wandered to a second one
+         is counted rather than named, because a summary that lists
+         two crags has no room left for what was climbed at either. */
+      const at = CT.climbs.venues(f.climbs);
+      if (at.length) bits.push(at[0] + (at.length > 1 ? ' +' + (at.length - 1) : ''));
       const s = CT.climbs.short(f.climbs, climbSpec[3]);
       if (s) bits.push(s);
     }

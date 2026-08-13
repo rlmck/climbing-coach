@@ -15,6 +15,10 @@
     saveSession() {}, deleteSession() {}, saveSlot() {}, deleteSlot() {},
     saveBodyweight() {}, deleteBodyweight() {}, saveMaxHang() {}, deleteMaxHang() {}, saveAthlete() {},
     saveCFTest() {}, deleteCFTest() {},
+    /* No backend means no shared lengths — every route keeps whatever
+       the guidebook shipped with, and a length typed against a blank
+       one counts for that session and goes no further. */
+    loadRouteLengths: async () => {}, saveRouteLength() {},
     saveProfile: () => null,
     createAthlete: async c => c.id
   };

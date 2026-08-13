@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v30';
+const CACHE = 'coach-v31';
 
 /* Which build is actually running, asked for by the app and shown in the
    sidebar. "Is my phone up to date" is otherwise unanswerable from the
@@ -55,6 +55,11 @@ const SHELL = [
   './js/firebase.js',
   './js/cftest.js',
   './js/data.js',
+  /* The whole of Portland, precached rather than fetched on demand.
+     A crag is exactly where there is no signal, and a route search
+     that only works at home is not a route search. */
+  './js/crags.data.js',
+  './js/crags.js',
   './js/store.js',
   './js/repo.js',
   './js/ui.js',
