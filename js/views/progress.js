@@ -8,6 +8,15 @@
   const GRIP_COLOR = { tfd: 'var(--spruce-mark)', half: 'var(--ember-mark)' };
   const GRIP_MARK  = { tfd: 'circle', half: 'square' };
 
+  /* same colours CT.TYPE already assigns those dots everywhere else —
+     the quick-log tiles, the schedule, the session history rows */
+  const VOLUME_SERIES = [
+    { key: 'strength',  label: 'Strength',        color: 'var(--spruce)' },
+    { key: 'endurance', label: 'Endurance',       color: 'var(--ink-4)' },
+    { key: 'pe',        label: 'Power Endurance', color: 'var(--ember)' },
+    { key: 'climbing',  label: 'Climbing',        color: 'var(--slate)' }
+  ];
+
   function empty(title, line) {
     return el('div', { class: 'empty' }, [ el('h3', { text: title }), el('p', { text: line }) ]);
   }
@@ -40,6 +49,50 @@
 
   CT.views.progress = function (host, c) {
     const wrap = el('div', { class: 'stack', style: 'gap:14px' });
+
+    /* ── weekly training volume ──────────────────────────────
+       How training actually split across types, week by week —
+       climbing included, which the block's own targets leave out. */
+    const vol = S.blockVolume(c);
+    wrap.appendChild(chartCard({
+      title: 'Weekly training volume',
+      sub: vol.total === 0 ? 'Log a session and the weekly split appears here'
+         : `${vol.total} session${vol.total === 1 ? '' : 's'} across ${vol.activeWeeks} of ${vol.weeks.length} week${vol.weeks.length === 1 ? '' : 's'}`,
+      hasData: vol.total > 0,
+      emptyTitle: 'No sessions logged yet',
+      emptyLine: 'Once sessions are logged, this shows how the block splits across strength, endurance, power endurance and climbing.',
+      buildChart: n => {
+        const holder = el('div');
+        n.appendChild(holder);
+        CT.charts.stackedBar(holder, {
+          height: 200,
+          series: VOLUME_SERIES,
+          categories: vol.weeks.map(w => ({ label: 'W' + w.w, values: w.counts, total: w.total }))
+        });
+        n.appendChild(el('div', { class: 'legend', style: 'margin-top:14px' }, VOLUME_SERIES.map(s =>
+          el('span', {}, [ el('i', { style: `background:${s.color}` }), s.label ])
+        )));
+      },
+      buildTable: n => {
+        n.appendChild(el('table', { class: 'table table--rows' }, [
+          el('thead', {}, [ el('tr', {}, [
+            el('th', { text: 'Week' }), el('th', { class: 'r', text: 'Strength' }),
+            el('th', { class: 'r', text: 'Endurance' }), el('th', { class: 'r', text: 'PE' }),
+            el('th', { class: 'r', text: 'Climbing' }), el('th', { class: 'r', text: 'Total' })
+          ]) ]),
+          el('tbody', {}, vol.weeks.map(w =>
+            el('tr', {}, [
+              el('td', { text: 'W' + w.w + ' · ' + dt.mini(w.start) }),
+              el('td', { class: 'r', text: String(w.counts.strength) }),
+              el('td', { class: 'r', text: String(w.counts.endurance) }),
+              el('td', { class: 'r', text: String(w.counts.pe) }),
+              el('td', { class: 'r', text: String(w.counts.climbing) }),
+              el('td', { class: 'r', text: String(w.total) })
+            ])
+          ))
+        ]));
+      }
+    }));
 
     /* ── bodyweight ───────────────────────────────────────── */
     const bw = S.bodyweightTrend(c);

@@ -320,6 +320,100 @@
     return host;
   }
 
+  /* ── stacked weekly volume ───────────────────────────────
+     One bar per week, segments stacked in a fixed type order.
+     Four series can't each carry their own dash/marker pair the
+     way the grip lines do, so the redundancy moves elsewhere: a
+     thin gap between segments, an always-visible legend of dot
+     swatches, and a tooltip that names every segment in text
+     rather than leaning on colour alone to say which is which. */
+  function stackedBar(host, cfg) {
+    const o = Object.assign({ height: 200 }, cfg);   // series:[{key,label,color}], categories:[{label,values,total}]
+    const draw = () => {
+      const W = Math.max(320, host.clientWidth || 640), H = o.height;
+      const m = { t: 14, r: 16, b: 26, l: 34 };
+      const iw = W - m.l - m.r, ih = H - m.t - m.b;
+      const n = Math.max(1, o.categories.length);
+
+      /* counts, not measurements — gridlines land on whole sessions
+         rather than on the fractional steps nice() gives a line chart */
+      const top = Math.max(1, ...o.categories.map(cat => cat.total));
+      const step = top <= 5 ? 1 : Math.ceil(nice(0, top).step);
+      const hi = Math.ceil(top / step) * step;
+      const gap = iw / n;
+      const bw = Math.min(42, gap * 0.58);
+      const X = i => m.l + gap * i + gap / 2;
+      const Y = v => m.t + ih - (v / (hi || 1)) * ih;
+      const base = Y(0);
+
+      const svg = svgEl('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+
+      for (let v = 0; v <= hi + 1e-9; v += step) {
+        svg.appendChild(svgEl('line', { class: 'grid-line', x1: m.l, x2: m.l + iw, y1: Y(v), y2: Y(v) }));
+        const t = svgEl('text', { class: 'axis-t', x: m.l - 8, y: Y(v) + 3.5, 'text-anchor': 'end' });
+        t.textContent = String(Math.round(v)); svg.appendChild(t);
+      }
+
+      const bars = [];
+      o.categories.forEach((cat, i) => {
+        const cx = X(i);
+        let y = base;
+        o.series.forEach(s => {
+          const v = cat.values[s.key] || 0;
+          if (!v) return;
+          const segH = (v / (hi || 1)) * ih;
+          const rect = svgEl('rect', { x: (cx - bw / 2).toFixed(1), y: (y - segH).toFixed(1),
+            width: bw.toFixed(1), height: segH.toFixed(1), fill: s.color });
+          svg.appendChild(rect);
+          bars.push({ node: rect, y0: base, y1: y - segH, h: segH });
+          y -= segH;
+        });
+        if (cat.total) {
+          const lbl = svgEl('text', { class: 'axis-t', x: cx, y: y - 6, 'text-anchor': 'middle' });
+          lbl.textContent = String(cat.total); svg.appendChild(lbl);
+        }
+        const t = svgEl('text', { class: 'axis-t', x: cx, y: H - 7, 'text-anchor': 'middle' });
+        t.textContent = cat.label; svg.appendChild(t);
+      });
+
+      /* hover / tap the nearest bar — the tooltip names every
+         segment rather than assuming the colour already did */
+      const tip = el('div', { class: 'tip', style:
+        'position:absolute;pointer-events:none;opacity:0;background:rgba(22,24,26,.94);color:#fff;' +
+        'padding:8px 11px;border-radius:9px;font-size:12px;line-height:1.45;white-space:nowrap;' +
+        'box-shadow:0 6px 22px rgba(16,18,20,.22);transform:translate(-50%,-115%);z-index:5' });
+      svg.addEventListener('pointermove', ev => {
+        const r = svg.getBoundingClientRect();
+        const px = (ev.clientX - r.left) * (W / r.width);
+        const i = Math.max(0, Math.min(n - 1, Math.floor((px - m.l) / gap)));
+        const cat = o.categories[i];
+        if (!cat) return;
+        tip.innerHTML = `<b style="font-weight:600">${cat.label}</b><br>` + o.series.map(s => {
+          const v = cat.values[s.key] || 0;
+          return v ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${s.color};margin-right:6px"></span>` +
+                     `<span style="color:rgba(255,255,255,.68)">${s.label}</span> ${v}` : '';
+        }).filter(Boolean).join('<br>') + (cat.total ? `<br><span style="color:rgba(255,255,255,.5)">Total ${cat.total}</span>` : '');
+        tip.style.left = (X(i) / W * 100) + '%';
+        tip.style.top = m.t + 6 + 'px';
+        tip.style.opacity = cat.total ? 1 : 0;
+      });
+      svg.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
+
+      host.style.position = 'relative';
+      CT.ui.clear(host);
+      host.appendChild(svg);
+      host.appendChild(tip);
+
+      if (CT.ui.ON) bars.forEach((b, i) => {
+        b.node.setAttribute('y', b.y0);
+        b.node.setAttribute('height', 0);
+        window.gsap.to(b.node, { attr: { y: b.y1, height: b.h }, duration: .55, delay: i * 0.012, ease: 'power3.out' });
+      });
+    };
+    mount(host, draw);
+    return host;
+  }
+
   /* ── sparkline for tiles ────────────────────────────────── */
   function spark(values, color, w, h) {
     w = w || 76; h = h || 26;
@@ -333,5 +427,5 @@
     return svg;
   }
 
-  CT.charts = { line, cfCurve, cfZones, spark, HAND };
+  CT.charts = { line, cfCurve, cfZones, stackedBar, spark, HAND };
 })();

@@ -566,6 +566,26 @@
     },
 
     /* ── derived numbers for tiles ───────────────────────── */
+    /* Weekly volume by type, across the whole block. Counts every
+       completed slot where it landed — climbing included, unlike
+       weekProgress, which only asks about the three types a block
+       is built from (see the comment on CT.TYPE.climbing). This is
+       what actually happened, not what the plan asked for. */
+    blockVolume(c) {
+      const weeks = [];
+      let total = 0, activeWeeks = 0;
+      for (let w = 1; w <= c.block.weeks; w++) {
+        const slots = S.slotsInWeek(c, w).filter(s => S.slotStatus(c, s) === 'completed');
+        const counts = { strength: 0, endurance: 0, pe: 0, climbing: 0 };
+        slots.forEach(s => { if (counts[s.type] != null) counts[s.type]++; });
+        const wTotal = counts.strength + counts.endurance + counts.pe + counts.climbing;
+        if (wTotal) activeWeeks++;
+        total += wTotal;
+        weeks.push({ w, start: S.weekStart(c, w), counts, total: wTotal });
+      }
+      return { weeks, total, activeWeeks };
+    },
+
     bodyweightTrend(c) {
       const b = c.bodyweight;
       if (!b.length) return { empty: true, latest: null, delta: 0, since: null };
