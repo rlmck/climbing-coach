@@ -873,6 +873,22 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .legend i{ width:14px; height:2px; border-radius:1px; display:block; flex:none; }
 .legend i.dash{ background:none !important; border-top:2px dashed currentColor; height:0; }
 
+/* A stroke swatch reads fine next to a line, and disappears next to a
+   fill — the 2px sliver above is legible for the line-chart legends it
+   was built for, but a bar-chart legend needs an actual block of the
+   fill colour to be readable at a glance. Also doubles as a click
+   target: legend entries here can drill a series down. */
+.legend__item{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-2);
+  background:none; border:none; padding:5px 9px; border-radius:8px; cursor:pointer;
+  transition:background .15s, opacity .15s; }
+.legend__item:hover{ background:var(--surface-3); }
+.legend__item[aria-pressed="true"]{ background:var(--surface-3); color:var(--ink); font-weight:600; }
+.legend.has-active .legend__item:not([aria-pressed="true"]){ opacity:.5; }
+/* `.legend .legend__sw` outranks `.legend i` above on specificity (two
+   classes beat one class + one tag) so a fill swatch actually wins
+   over the stroke-swatch sizing regardless of rule order. */
+.legend .legend__sw{ width:11px; height:11px; border-radius:3px; display:block; flex:none; }
+
 /* ── critical force ────────────────────────────────────────
    Zones first, because they are the only part an athlete can
    train off. Everything below them is evidence for the band. */

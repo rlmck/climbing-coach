@@ -586,6 +586,35 @@
       return { weeks, total, activeWeeks };
     },
 
+    /* What one type's sessions actually were, across the same block
+       weeks blockVolume counts — so a breakdown's total always matches
+       the bar it was drilled down from. Strength has no modality, so it
+       splits on hangs vs limit bouldering instead; everything else
+       splits on CT.MODALITIES for that type. */
+    typeBreakdown(c, type) {
+      const groups = {};
+      let total = 0;
+      for (let w = 1; w <= c.block.weeks; w++) {
+        S.slotsInWeek(c, w).forEach(slot => {
+          if (slot.type !== type || !slot.sessionId || S.slotStatus(c, slot) !== 'completed') return;
+          const ses = S.session(c, slot.sessionId);
+          if (!ses) return;
+          const key = type === 'strength' ? (S.strengthMode(ses) === 'limit' ? 'limit' : 'hangs') : (ses.modality || 'other');
+          groups[key] = (groups[key] || 0) + 1;
+          total++;
+        });
+      }
+      const label = key => {
+        if (type === 'strength') return key === 'limit' ? 'Limit bouldering' : 'Max hangs';
+        const m = (CT.MODALITIES[type] || []).find(x => x.id === key);
+        return m ? m.name : 'Other';
+      };
+      const rows = Object.keys(groups)
+        .map(key => ({ key, label: label(key), count: groups[key] }))
+        .sort((a, b) => b.count - a.count);
+      return { rows, total };
+    },
+
     bodyweightTrend(c) {
       const b = c.bodyweight;
       if (!b.length) return { empty: true, latest: null, delta: 0, since: null };

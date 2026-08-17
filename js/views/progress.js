@@ -62,16 +62,54 @@
       emptyTitle: 'No sessions logged yet',
       emptyLine: 'Once sessions are logged, this shows how the block splits across strength, endurance, power endurance and climbing.',
       buildChart: n => {
+        let active = null;   // selected type, or null for the plain stack
         const holder = el('div');
+        const legend = el('div', { class: 'legend' });
+        const drill = el('div');
         n.appendChild(holder);
-        CT.charts.stackedBar(holder, {
-          height: 200,
-          series: VOLUME_SERIES,
-          categories: vol.weeks.map(w => ({ label: 'W' + w.w, values: w.counts, total: w.total }))
-        });
-        n.appendChild(el('div', { class: 'legend', style: 'margin-top:14px' }, VOLUME_SERIES.map(s =>
-          el('span', {}, [ el('i', { style: `background:${s.color}` }), s.label ])
-        )));
+        n.appendChild(legend);
+        n.appendChild(drill);
+
+        function paint() {
+          CT.charts.stackedBar(holder, {
+            height: 200,
+            series: VOLUME_SERIES,
+            categories: vol.weeks.map(w => ({ label: 'W' + w.w, values: w.counts, total: w.total })),
+            active
+          });
+
+          legend.classList.toggle('has-active', !!active);
+          CT.ui.clear(legend);
+          VOLUME_SERIES.forEach(s => legend.appendChild(el('button', {
+            class: 'legend__item', 'aria-pressed': String(active === s.key),
+            onclick: () => { active = active === s.key ? null : s.key; paint(); }
+          }, [
+            el('i', { class: 'legend__sw', style: `background:${s.color}` }),
+            s.label
+          ])));
+
+          CT.ui.clear(drill);
+          if (!active) {
+            drill.appendChild(el('p', { class: 'tiny', style: 'margin-top:10px',
+              text: 'Tap a type above to see how it breaks down.' }));
+            return;
+          }
+          const s = VOLUME_SERIES.find(x => x.key === active);
+          const bd = S.typeBreakdown(c, active);
+          const box = el('div', { style: 'margin-top:12px' }, [
+            el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
+            bd.rows.length
+              ? el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
+                  el('tbody', {}, bd.rows.map(r => el('tr', {}, [
+                    el('td', {}, [ el('span', { class: 'legend__sw', style: `background:${s.color};opacity:${.35 + .65 * r.count / bd.rows[0].count};display:inline-block;margin-right:8px;vertical-align:middle` }), r.label ]),
+                    el('td', { class: 'r', text: String(r.count) })
+                  ])))
+                ])
+              : el('p', { class: 'tiny', style: 'margin-top:6px', text: `No ${s.label.toLowerCase()} sessions logged this block.` })
+          ]);
+          drill.appendChild(box);
+        }
+        paint();
       },
       buildTable: n => {
         n.appendChild(el('table', { class: 'table table--rows' }, [

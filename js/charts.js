@@ -328,7 +328,7 @@
      swatches, and a tooltip that names every segment in text
      rather than leaning on colour alone to say which is which. */
   function stackedBar(host, cfg) {
-    const o = Object.assign({ height: 200 }, cfg);   // series:[{key,label,color}], categories:[{label,values,total}]
+    const o = Object.assign({ height: 200 }, cfg);   // series:[{key,label,color}], categories:[{label,values,total}], active:key|null
     const draw = () => {
       const W = Math.max(320, host.clientWidth || 640), H = o.height;
       const m = { t: 14, r: 16, b: 26, l: 34 };
@@ -362,8 +362,9 @@
           const v = cat.values[s.key] || 0;
           if (!v) return;
           const segH = (v / (hi || 1)) * ih;
+          const dimmed = o.active && o.active !== s.key;
           const rect = svgEl('rect', { x: (cx - bw / 2).toFixed(1), y: (y - segH).toFixed(1),
-            width: bw.toFixed(1), height: segH.toFixed(1), fill: s.color });
+            width: bw.toFixed(1), height: segH.toFixed(1), fill: s.color, opacity: dimmed ? 0.25 : 1 });
           svg.appendChild(rect);
           bars.push({ node: rect, y0: base, y1: y - segH, h: segH });
           y -= segH;
