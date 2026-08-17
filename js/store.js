@@ -617,7 +617,7 @@
           const modKey = ses.modality || 'other';
           const mod = (CT.MODALITIES[slot.type] || []).find(x => x.id === modKey);
           const key = (fromClimbing ? 'climb:' : '') + modKey;
-          if (!groups[key]) groups[key] = { label: (fromClimbing ? 'Climbing — ' : '') + (mod ? mod.name : 'Other'), count: 0 };
+          if (!groups[key]) groups[key] = { label: (fromClimbing ? 'Climb — ' : '') + (mod ? mod.name : 'Other'), count: 0 };
           groups[key].count++;
           total++;
           const f = ses.fields || {};

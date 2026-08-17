@@ -22,6 +22,19 @@
     return el('div', { class: 'empty' }, [ el('h3', { text: title }), el('p', { text: line }) ]);
   }
 
+  /* The full modality name goes in the legend, the tooltip, and the
+     table; the chart only has ~90px per bar to put a label under. Cut
+     at the nearest word boundary rather than a flat character count —
+     "Climb — Routes" and "Climb — Bouldering" only differ after the
+     word a naive first-word cut would have thrown away. */
+  function shortLabel(text, max) {
+    max = max || 15;
+    if (text.length <= max) return text;
+    const cut = text.slice(0, max);
+    const sp = cut.lastIndexOf(' ');
+    return (sp > max * 0.55 ? cut.slice(0, sp) : cut).trim() + '…';
+  }
+
   /* swatch(colour, weight) — a filled block, at less than full opacity
      when it's standing in for something smaller than the biggest row
      in its list, so a breakdown carries its own rough bar chart even
@@ -124,40 +137,57 @@
       emptyTitle: 'No sessions logged yet',
       emptyLine: 'Once sessions are logged, this shows how the block splits across strength, endurance and power endurance.',
       buildChart: n => {
-        let active = null;   // selected type, or null for the plain stack
+        let active = null;   // selected type, or null for the weekly stack
+        const head = el('div', { class: 'row', style: 'justify-content:space-between;align-items:baseline' });
         const holder = el('div');
         const legend = el('div', { class: 'legend' });
         const drill = el('div');
+        n.appendChild(head);
         n.appendChild(holder);
         n.appendChild(legend);
         n.appendChild(drill);
 
+        const select = key => { active = active === key ? null : key; paint(); };
+
         function paint() {
-          CT.charts.stackedBar(holder, {
-            height: 200,
-            series: VOLUME_SERIES,
-            categories: vol.weeks.map(w => ({ label: 'W' + w.w, values: w.counts, total: w.total })),
-            active
-          });
+          CT.ui.clear(head);
+          const s = active && VOLUME_SERIES.find(x => x.key === active);
+          const bd = active && S.typeBreakdown(c, active);
+
+          if (!active) {
+            CT.charts.stackedBar(holder, {
+              height: 200,
+              series: VOLUME_SERIES,
+              categories: vol.weeks.map(w => ({ label: 'W' + w.w, values: w.counts, total: w.total })),
+              onSegmentClick: select
+            });
+          } else {
+            const rows = bd.kind === 'strength'
+              ? bd.grips.map(g => ({ label: g.short, values: { [active]: g.clean }, total: g.clean }))
+                  .concat(bd.limit.count ? [{ label: 'Limit', values: { [active]: bd.limit.count }, total: bd.limit.count }] : [])
+              : bd.rows.map(r => ({ label: shortLabel(r.label), full: r.label, values: { [active]: r.count }, total: r.count }));
+            CT.charts.stackedBar(holder, { height: 200, series: [s], categories: rows });
+            head.appendChild(el('button', { class: 'btn btn--ghost btn--sm', onclick: () => select(active) },
+              [ icon('back'), 'All types' ]));
+            head.appendChild(el('span', { class: 'chip', text: s.label }));
+          }
 
           legend.classList.toggle('has-active', !!active);
           CT.ui.clear(legend);
-          VOLUME_SERIES.forEach(s => legend.appendChild(el('button', {
-            class: 'legend__item', 'aria-pressed': String(active === s.key),
-            onclick: () => { active = active === s.key ? null : s.key; paint(); }
+          VOLUME_SERIES.forEach(t => legend.appendChild(el('button', {
+            class: 'legend__item', 'aria-pressed': String(active === t.key),
+            onclick: () => select(t.key)
           }, [
-            el('i', { class: 'legend__sw', style: `background:${s.color}` }),
-            s.label
+            el('i', { class: 'legend__sw', style: `background:${t.color}` }),
+            t.label
           ])));
 
           CT.ui.clear(drill);
           if (!active) {
             drill.appendChild(el('p', { class: 'tiny', style: 'margin-top:10px',
-              text: 'Tap a type above to see how it breaks down.' }));
+              text: 'Tap a type below, or a bar above, to break it down.' }));
             return;
           }
-          const s = VOLUME_SERIES.find(x => x.key === active);
-          const bd = S.typeBreakdown(c, active);
           drill.appendChild(bd.kind === 'strength' ? strengthDrill(s, bd) : modalityDrill(s, bd));
         }
         paint();
