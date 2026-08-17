@@ -9,16 +9,75 @@
   const GRIP_MARK  = { tfd: 'circle', half: 'square' };
 
   /* same colours CT.TYPE already assigns those dots everywhere else —
-     the quick-log tiles, the schedule, the session history rows */
+     the quick-log tiles, the schedule, the session history rows.
+     Climbing has no bar of its own here — it folds into Endurance
+     (see blockVolume) — but keeps its own rows once you drill in. */
   const VOLUME_SERIES = [
     { key: 'strength',  label: 'Strength',        color: 'var(--spruce)' },
     { key: 'endurance', label: 'Endurance',       color: 'var(--ink-4)' },
-    { key: 'pe',        label: 'Power Endurance', color: 'var(--ember)' },
-    { key: 'climbing',  label: 'Climbing',        color: 'var(--slate)' }
+    { key: 'pe',        label: 'Power Endurance', color: 'var(--ember)' }
   ];
 
   function empty(title, line) {
     return el('div', { class: 'empty' }, [ el('h3', { text: title }), el('p', { text: line }) ]);
+  }
+
+  /* swatch(colour, weight) — a filled block, at less than full opacity
+     when it's standing in for something smaller than the biggest row
+     in its list, so a breakdown carries its own rough bar chart even
+     as a list of numbers. */
+  function swatch(color, weight) {
+    return el('span', { class: 'legend__sw', style:
+      `background:${color};opacity:${weight};display:inline-block;margin-right:8px;vertical-align:middle` });
+  }
+
+  /* the modality/duration/metres shape — endurance (climbing folded
+     in), power endurance */
+  function modalityDrill(s, bd) {
+    const bits = [];
+    if (bd.metres) bits.push(CT.fmtMetres(bd.metres));
+    if (bd.durationSec) bits.push(CT.fmtDuration(bd.durationSec));
+    return el('div', { style: 'margin-top:12px' }, [
+      el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
+      bits.length ? el('p', { class: 'tiny', style: 'margin-top:3px', text: bits.join(' · ') + ' across the block' }) : null,
+      bd.rows.length
+        ? el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
+            el('tbody', {}, bd.rows.map(r => el('tr', {}, [
+              el('td', {}, [ swatch(s.color, .35 + .65 * r.count / bd.rows[0].count), r.label ]),
+              el('td', { class: 'r', text: String(r.count) })
+            ])))
+          ])
+        : el('p', { class: 'tiny', style: 'margin-top:6px', text: `No ${s.label.toLowerCase()} sessions logged this block.` })
+    ]);
+  }
+
+  /* the grip/reps/load shape — strength has no modality, so its
+     breakdown is the thing it actually varies by instead */
+  function strengthDrill(s, bd) {
+    const rows = [
+      el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` })
+    ];
+    if (bd.hangs) {
+      rows.push(el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
+        el('thead', {}, [ el('tr', {}, [
+          el('th', { text: 'Grip' }), el('th', { class: 'r', text: 'Clean reps' }), el('th', { class: 'r', text: 'Working load' })
+        ]) ]),
+        el('tbody', {}, bd.grips.map(g => el('tr', {}, [
+          el('td', {}, [ swatch(s.color, g.reps ? .35 + .65 * g.clean / Math.max(1, Math.max(...bd.grips.map(x => x.clean)) || 1) : .2), g.short ]),
+          el('td', { class: 'r', text: g.reps ? `${g.clean}/${g.reps}` : '—' }),
+          el('td', { class: 'r', text: g.weight != null ? CT.fmtLoad(g.weight) : '—' })
+        ])))
+      ]));
+    }
+    if (bd.limit.count) {
+      rows.push(el('p', { class: 'tiny', style: 'margin-top:10px', text:
+        `Limit bouldering — ${bd.limit.count} ${bd.limit.count === 1 ? 'session' : 'sessions'} · ${bd.limit.attempts} attempts · ${bd.limit.sent} sent` +
+        (bd.limit.topGrade ? ` · top ${bd.limit.topGrade}` : '') }));
+    }
+    if (!bd.hangs && !bd.limit.count) {
+      rows.push(el('p', { class: 'tiny', style: 'margin-top:6px', text: 'No strength sessions logged this block.' }));
+    }
+    return el('div', { style: 'margin-top:12px' }, rows);
   }
 
   /* a card that can flip between its chart and the underlying numbers */
@@ -52,7 +111,10 @@
 
     /* ── weekly training volume ──────────────────────────────
        How training actually split across types, week by week —
-       climbing included, which the block's own targets leave out. */
+       climbing folded into endurance, since a day at the crag and a
+       day of route laps are the same kind of work for this purpose
+       (see blockVolume). The block's own targets leave climbing out
+       entirely; this doesn't. */
     const vol = S.blockVolume(c);
     wrap.appendChild(chartCard({
       title: 'Weekly training volume',
@@ -60,7 +122,7 @@
          : `${vol.total} session${vol.total === 1 ? '' : 's'} across ${vol.activeWeeks} of ${vol.weeks.length} week${vol.weeks.length === 1 ? '' : 's'}`,
       hasData: vol.total > 0,
       emptyTitle: 'No sessions logged yet',
-      emptyLine: 'Once sessions are logged, this shows how the block splits across strength, endurance, power endurance and climbing.',
+      emptyLine: 'Once sessions are logged, this shows how the block splits across strength, endurance and power endurance.',
       buildChart: n => {
         let active = null;   // selected type, or null for the plain stack
         const holder = el('div');
@@ -96,18 +158,7 @@
           }
           const s = VOLUME_SERIES.find(x => x.key === active);
           const bd = S.typeBreakdown(c, active);
-          const box = el('div', { style: 'margin-top:12px' }, [
-            el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
-            bd.rows.length
-              ? el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
-                  el('tbody', {}, bd.rows.map(r => el('tr', {}, [
-                    el('td', {}, [ el('span', { class: 'legend__sw', style: `background:${s.color};opacity:${.35 + .65 * r.count / bd.rows[0].count};display:inline-block;margin-right:8px;vertical-align:middle` }), r.label ]),
-                    el('td', { class: 'r', text: String(r.count) })
-                  ])))
-                ])
-              : el('p', { class: 'tiny', style: 'margin-top:6px', text: `No ${s.label.toLowerCase()} sessions logged this block.` })
-          ]);
-          drill.appendChild(box);
+          drill.appendChild(bd.kind === 'strength' ? strengthDrill(s, bd) : modalityDrill(s, bd));
         }
         paint();
       },
@@ -116,7 +167,7 @@
           el('thead', {}, [ el('tr', {}, [
             el('th', { text: 'Week' }), el('th', { class: 'r', text: 'Strength' }),
             el('th', { class: 'r', text: 'Endurance' }), el('th', { class: 'r', text: 'PE' }),
-            el('th', { class: 'r', text: 'Climbing' }), el('th', { class: 'r', text: 'Total' })
+            el('th', { class: 'r', text: 'Total' })
           ]) ]),
           el('tbody', {}, vol.weeks.map(w =>
             el('tr', {}, [
@@ -124,7 +175,6 @@
               el('td', { class: 'r', text: String(w.counts.strength) }),
               el('td', { class: 'r', text: String(w.counts.endurance) }),
               el('td', { class: 'r', text: String(w.counts.pe) }),
-              el('td', { class: 'r', text: String(w.counts.climbing) }),
               el('td', { class: 'r', text: String(w.total) })
             ])
           ))

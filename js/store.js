@@ -567,18 +567,23 @@
 
     /* ── derived numbers for tiles ───────────────────────── */
     /* Weekly volume by type, across the whole block. Counts every
-       completed slot where it landed — climbing included, unlike
-       weekProgress, which only asks about the three types a block
-       is built from (see the comment on CT.TYPE.climbing). This is
-       what actually happened, not what the plan asked for. */
+       completed slot where it landed. Climbing folds into endurance
+       here — both are what happens on route or boulder terrain, and
+       the volume chart reads better as the three types the block is
+       actually built from (see weekProgress) than as a fourth bar
+       most weeks don't have. The drill-down (typeBreakdown) keeps the
+       distinction, so nothing about it is actually lost. */
     blockVolume(c) {
       const weeks = [];
       let total = 0, activeWeeks = 0;
       for (let w = 1; w <= c.block.weeks; w++) {
         const slots = S.slotsInWeek(c, w).filter(s => S.slotStatus(c, s) === 'completed');
-        const counts = { strength: 0, endurance: 0, pe: 0, climbing: 0 };
-        slots.forEach(s => { if (counts[s.type] != null) counts[s.type]++; });
-        const wTotal = counts.strength + counts.endurance + counts.pe + counts.climbing;
+        const counts = { strength: 0, endurance: 0, pe: 0 };
+        slots.forEach(s => {
+          const key = s.type === 'climbing' ? 'endurance' : s.type;
+          if (counts[key] != null) counts[key]++;
+        });
+        const wTotal = counts.strength + counts.endurance + counts.pe;
         if (wTotal) activeWeeks++;
         total += wTotal;
         weeks.push({ w, start: S.weekStart(c, w), counts, total: wTotal });
@@ -588,31 +593,80 @@
 
     /* What one type's sessions actually were, across the same block
        weeks blockVolume counts — so a breakdown's total always matches
-       the bar it was drilled down from. Strength has no modality, so it
-       splits on hangs vs limit bouldering instead; everything else
-       splits on CT.MODALITIES for that type. */
+       the bar it was drilled down from.
+
+       Strength has no modality and a different shape of detail
+       entirely — reps and clean count per grip, not a session count —
+       so it gets its own shape of answer (kind:'strength'). Everything
+       else answers with a modality split (kind:'modality') plus
+       whatever of metres/duration those sessions actually recorded.
+       Selecting 'endurance' pulls in climbing sessions too — see
+       blockVolume — labelled apart so the split survives the merge. */
     typeBreakdown(c, type) {
+      if (type === 'strength') return S._strengthBreakdown(c);
+
+      const includeTypes = type === 'endurance' ? ['endurance', 'climbing'] : [type];
       const groups = {};
-      let total = 0;
+      let total = 0, metres = 0, durationSec = 0;
       for (let w = 1; w <= c.block.weeks; w++) {
         S.slotsInWeek(c, w).forEach(slot => {
-          if (slot.type !== type || !slot.sessionId || S.slotStatus(c, slot) !== 'completed') return;
+          if (includeTypes.indexOf(slot.type) < 0 || !slot.sessionId || S.slotStatus(c, slot) !== 'completed') return;
           const ses = S.session(c, slot.sessionId);
           if (!ses) return;
-          const key = type === 'strength' ? (S.strengthMode(ses) === 'limit' ? 'limit' : 'hangs') : (ses.modality || 'other');
-          groups[key] = (groups[key] || 0) + 1;
+          const fromClimbing = slot.type === 'climbing';
+          const modKey = ses.modality || 'other';
+          const mod = (CT.MODALITIES[slot.type] || []).find(x => x.id === modKey);
+          const key = (fromClimbing ? 'climb:' : '') + modKey;
+          if (!groups[key]) groups[key] = { label: (fromClimbing ? 'Climbing — ' : '') + (mod ? mod.name : 'Other'), count: 0 };
+          groups[key].count++;
           total++;
+          const f = ses.fields || {};
+          if (typeof f.metres === 'number') metres += f.metres;
+          if (typeof f.durationSec === 'number') durationSec += f.durationSec;
         });
       }
-      const label = key => {
-        if (type === 'strength') return key === 'limit' ? 'Limit bouldering' : 'Max hangs';
-        const m = (CT.MODALITIES[type] || []).find(x => x.id === key);
-        return m ? m.name : 'Other';
-      };
       const rows = Object.keys(groups)
-        .map(key => ({ key, label: label(key), count: groups[key] }))
+        .map(key => ({ key, label: groups[key].label, count: groups[key].count }))
         .sort((a, b) => b.count - a.count);
-      return { rows, total };
+      return { kind: 'modality', total, rows, metres, durationSec };
+    },
+
+    /* Reps and clean count per grip, hangboard sessions only — a limit
+       day has no grip to report against, so it's summarised apart:
+       how many, how many attempts, how many sent, and the hardest
+       problem in the mix (CT.topGrade already answers "hardest" off a
+       flat problem list, which is what a block's worth of sessions
+       flattens down to). */
+    _strengthBreakdown(c) {
+      let total = 0, hangs = 0;
+      const problems = [];
+      const gripStats = {};
+      CT.GRIPS.forEach(g => { gripStats[g.id] = { reps: 0, clean: 0 }; });
+      for (let w = 1; w <= c.block.weeks; w++) {
+        S.slotsInWeek(c, w).forEach(slot => {
+          if (slot.type !== 'strength' || !slot.sessionId || S.slotStatus(c, slot) !== 'completed') return;
+          const ses = S.session(c, slot.sessionId);
+          if (!ses) return;
+          total++;
+          if (S.strengthMode(ses) === 'limit') {
+            problems.push(...(ses.problems || []));
+          } else {
+            hangs++;
+            CT.GRIPS.forEach(g => {
+              const reps = S.repsOf(ses, g.id);
+              gripStats[g.id].reps += reps.length;
+              gripStats[g.id].clean += reps.filter(Boolean).length;
+            });
+          }
+        });
+      }
+      const grips = CT.GRIPS.map(g => Object.assign({ id: g.id, name: g.name, short: g.short,
+        weight: (c.prescribed || {})[g.id] }, gripStats[g.id]));
+      const limit = { count: total - hangs,
+        attempts: problems.reduce((a, p) => a + p.attempts, 0),
+        sent: problems.filter(p => p.sent).length,
+        topGrade: CT.topGrade(problems) };
+      return { kind: 'strength', total, hangs, grips, limit };
     },
 
     bodyweightTrend(c) {
