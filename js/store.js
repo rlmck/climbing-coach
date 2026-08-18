@@ -607,7 +607,9 @@
 
       const includeTypes = type === 'endurance' ? ['endurance', 'climbing'] : [type];
       const groups = {};
-      let total = 0, metres = 0, durationSec = 0;
+      let total = 0, metres = 0, durationSec = 0, rpeSum = 0, rpeCount = 0;
+      let climbRows = [];
+      const bySet = { route: [], boulder: [] };
       for (let w = 1; w <= c.block.weeks; w++) {
         S.slotsInWeek(c, w).forEach(slot => {
           if (includeTypes.indexOf(slot.type) < 0 || !slot.sessionId || S.slotStatus(c, slot) !== 'completed') return;
@@ -623,12 +625,32 @@
           const f = ses.fields || {};
           if (typeof f.metres === 'number') metres += f.metres;
           if (typeof f.durationSec === 'number') durationSec += f.durationSec;
+          const r = CT.rpeValue(f.rpe);
+          if (r != null) { rpeSum += r; rpeCount++; }
+          /* Only the modalities that log a list of climbs (routes,
+             boulder 4×4s, long problems, and both climbing styles)
+             have anything to add here — the rest have no pitch count
+             or grade to offer. Kept apart by ladder, because a route
+             grade and a boulder grade aren't the same "hardest". */
+          const form = CT.FORMS[ses.modality] || [];
+          const climbSpec = form.find(x => x[2] === 'climbs');
+          if (climbSpec && Array.isArray(f.climbs)) {
+            climbRows = climbRows.concat(f.climbs);
+            bySet[climbSpec[3] === 'boulder' ? 'boulder' : 'route'].push(...f.climbs);
+          }
         });
       }
       const rows = Object.keys(groups)
         .map(key => ({ key, label: groups[key].label, count: groups[key].count }))
         .sort((a, b) => b.count - a.count);
-      return { kind: 'modality', total, rows, metres, durationSec };
+      return {
+        kind: 'modality', total, rows, metres, durationSec,
+        climbs: CT.climbs.total(climbRows),
+        venues: CT.climbs.venues(climbRows),
+        hardestRoute: CT.climbs.hardest(bySet.route, 'route'),
+        hardestBoulder: CT.climbs.hardest(bySet.boulder, 'boulder'),
+        avgRpe: rpeCount ? +(rpeSum / rpeCount).toFixed(1) : null
+      };
     },
 
     /* Reps and clean count per grip, hangboard sessions only — a limit
@@ -660,8 +682,15 @@
           }
         });
       }
-      const grips = CT.GRIPS.map(g => Object.assign({ id: g.id, name: g.name, short: g.short,
-        weight: (c.prescribed || {})[g.id] }, gripStats[g.id]));
+      const grips = CT.GRIPS.map(g => {
+        const st = gripStats[g.id];
+        const weight = (c.prescribed || {})[g.id];
+        const startWeight = (c.startLoads || {})[g.id];
+        return Object.assign({ id: g.id, name: g.name, short: g.short, weight,
+          cleanPct: st.reps ? Math.round(100 * st.clean / st.reps) : null,
+          gained: (typeof weight === 'number' && typeof startWeight === 'number') ? +(weight - startWeight).toFixed(1) : null
+        }, st);
+      });
       const limit = { count: total - hangs,
         attempts: problems.reduce((a, p) => a + p.attempts, 0),
         sent: problems.filter(p => p.sent).length,

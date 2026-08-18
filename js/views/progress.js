@@ -44,17 +44,33 @@
       `background:${color};opacity:${weight};display:inline-block;margin-right:8px;vertical-align:middle` });
   }
 
+  /* one label/value pair, in the same compact form the client card
+     already uses for "This week" / "Streak" / "Last session" */
+  function kv(label, value) {
+    return el('dl', { class: 'kv' }, [ el('dt', { text: label }), el('dd', { text: value }) ]);
+  }
+
   /* the modality/duration/metres shape — endurance (climbing folded
-     in), power endurance */
+     in), power endurance. Everything past the session count is only
+     as rich as what those modalities actually ask for — traversing
+     and 1-on-1-off have no climbs list to pull a pitch count or a
+     grade from, so a stat with nothing behind it just doesn't appear
+     rather than showing up as a confident zero. */
   function modalityDrill(s, bd) {
-    const bits = [];
-    if (bd.metres) bits.push(CT.fmtMetres(bd.metres));
-    if (bd.durationSec) bits.push(CT.fmtDuration(bd.durationSec));
+    const stats = [];
+    if (bd.metres) stats.push(kv('Metres climbed', CT.fmtMetres(bd.metres)));
+    if (bd.durationSec) stats.push(kv('Time on the wall', CT.fmtDuration(bd.durationSec)));
+    if (bd.climbs) stats.push(kv(bd.climbs === 1 ? 'Climb' : 'Climbs', String(bd.climbs)));
+    if (bd.hardestRoute) stats.push(kv('Hardest route', bd.hardestRoute));
+    if (bd.hardestBoulder) stats.push(kv('Hardest boulder', bd.hardestBoulder));
+    if (bd.avgRpe) stats.push(kv('Average effort', bd.avgRpe + ' / 5'));
+    if (bd.venues.length) stats.push(kv(bd.venues.length === 1 ? 'Venue' : 'Venues', String(bd.venues.length)));
+
     return el('div', { style: 'margin-top:12px' }, [
       el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
-      bits.length ? el('p', { class: 'tiny', style: 'margin-top:3px', text: bits.join(' · ') + ' across the block' }) : null,
+      stats.length ? el('div', { class: 'cfstats', style: 'margin-top:14px;padding-top:0;border-top:none' }, stats) : null,
       bd.rows.length
-        ? el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
+        ? el('table', { class: 'table table--rows', style: 'margin-top:16px' }, [
             el('tbody', {}, bd.rows.map(r => el('tr', {}, [
               el('td', {}, [ swatch(s.color, .35 + .65 * r.count / bd.rows[0].count), r.label ]),
               el('td', { class: 'r', text: String(r.count) })
@@ -65,7 +81,10 @@
   }
 
   /* the grip/reps/load shape — strength has no modality, so its
-     breakdown is the thing it actually varies by instead */
+     breakdown is the thing it actually varies by instead: how clean
+     each grip has been, and how much it's actually moved since the
+     block opened (c.startLoads vs c.prescribed — the same numbers the
+     +2.5 kg replay logic runs on, not a separate estimate of them). */
   function strengthDrill(s, bd) {
     const rows = [
       el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` })
@@ -73,12 +92,14 @@
     if (bd.hangs) {
       rows.push(el('table', { class: 'table table--rows', style: 'margin-top:8px' }, [
         el('thead', {}, [ el('tr', {}, [
-          el('th', { text: 'Grip' }), el('th', { class: 'r', text: 'Clean reps' }), el('th', { class: 'r', text: 'Working load' })
+          el('th', { text: 'Grip' }), el('th', { class: 'r', text: 'Clean' }),
+          el('th', { class: 'r', text: 'Working load' }), el('th', { class: 'r', text: 'Gained' })
         ]) ]),
         el('tbody', {}, bd.grips.map(g => el('tr', {}, [
           el('td', {}, [ swatch(s.color, g.reps ? .35 + .65 * g.clean / Math.max(1, Math.max(...bd.grips.map(x => x.clean)) || 1) : .2), g.short ]),
-          el('td', { class: 'r', text: g.reps ? `${g.clean}/${g.reps}` : '—' }),
-          el('td', { class: 'r', text: g.weight != null ? CT.fmtLoad(g.weight) : '—' })
+          el('td', { class: 'r', text: g.reps ? `${g.clean}/${g.reps}${g.cleanPct != null ? ' · ' + g.cleanPct + '%' : ''}` : '—' }),
+          el('td', { class: 'r', text: g.weight != null ? CT.fmtLoad(g.weight) : '—' }),
+          el('td', { class: 'r', text: g.gained != null ? (g.gained > 0 ? '+' : '') + g.gained.toFixed(1) + ' kg' : '—' })
         ])))
       ]));
     }
