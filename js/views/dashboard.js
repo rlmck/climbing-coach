@@ -242,11 +242,10 @@
       return parts.length ? parts.join(' · ') : 'Max hangs';
     }
     const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
-    const form = CT.FORMS[ses.modality] || [];
     const f = ses.fields || {};
 
     /* which grade ladder this modality counts in, if it counts climbs */
-    const climbSpec = form.find(x => x[2] === 'climbs');
+    const climbSpec = CT.climbs.specFor(ses.modality);
 
     /* "Hangboard" and "Edge pulls" are different exercises sharing one
        modality, so the style leads rather than the modality's name. */
@@ -262,7 +261,7 @@
          two crags has no room left for what was climbed at either. */
       const at = CT.climbs.venues(f.climbs);
       if (at.length) bits.push(at[0] + (at.length > 1 ? ' +' + (at.length - 1) : ''));
-      const s = CT.climbs.short(f.climbs, climbSpec[3]);
+      const s = CT.climbs.short(f.climbs, climbSpec.set);
       if (s) bits.push(s);
     }
     if (f.metres) bits.push(CT.fmtMetres(f.metres));

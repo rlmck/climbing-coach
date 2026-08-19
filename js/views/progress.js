@@ -58,13 +58,22 @@
      rather than showing up as a confident zero. */
   function modalityDrill(s, bd) {
     const stats = [];
-    if (bd.metres) stats.push(kv('Metres climbed', CT.fmtMetres(bd.metres)));
-    if (bd.durationSec) stats.push(kv('Time on the wall', CT.fmtDuration(bd.durationSec)));
+    /* Ask the formatter whether there is anything to show, rather than
+       the raw number — blank is not zero, and that has to mean the
+       same thing here as at the box that recorded it (see CT.metres),
+       or a tile appears with a label above nothing. */
+    const metres = CT.fmtMetres(bd.metres), onWall = CT.fmtDuration(bd.durationSec);
+    if (metres) stats.push(kv('Metres climbed', metres));
+    if (onWall) stats.push(kv('Time on the wall', onWall));
     if (bd.climbs) stats.push(kv(bd.climbs === 1 ? 'Climb' : 'Climbs', String(bd.climbs)));
     if (bd.hardestRoute) stats.push(kv('Hardest route', bd.hardestRoute));
     if (bd.hardestBoulder) stats.push(kv('Hardest boulder', bd.hardestBoulder));
-    if (bd.avgRpe) stats.push(kv('Average effort', bd.avgRpe + ' / 5'));
-    if (bd.venues.length) stats.push(kv(bd.venues.length === 1 ? 'Venue' : 'Venues', String(bd.venues.length)));
+    if (bd.avgRpe) stats.push(kv('Average effort', bd.avgRpe + ' / ' + CT.RPE.max));
+    /* Named rather than counted, the way a session line names the crag
+       it was at — "2" says nothing about where a block was climbed,
+       and there is room here that a one-line summary never had. */
+    if (bd.venues.length) stats.push(kv(bd.venues.length === 1 ? 'Venue' : 'Venues',
+      bd.venues[0] + (bd.venues.length > 1 ? ' +' + (bd.venues.length - 1) : '')));
 
     return el('div', { style: 'margin-top:12px' }, [
       el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
@@ -83,8 +92,12 @@
   /* the grip/reps/load shape — strength has no modality, so its
      breakdown is the thing it actually varies by instead: how clean
      each grip has been, and how much it's actually moved since the
-     block opened (c.startLoads vs c.prescribed — the same numbers the
-     +2.5 kg replay logic runs on, not a separate estimate of them). */
+     replay's starting line (c.startLoads vs c.prescribed — the same
+     numbers the +2.5 kg logic runs on, not a separate estimate of
+     them). That line is normally the opening of the block, but a
+     re-tested max moves it, and a gain measured from a fortnight ago
+     is not a block's gain — so when it has moved, the table says so
+     rather than letting the column heading imply otherwise. */
   function strengthDrill(s, bd) {
     const rows = [
       el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` })
@@ -97,11 +110,15 @@
         ]) ]),
         el('tbody', {}, bd.grips.map(g => el('tr', {}, [
           el('td', {}, [ swatch(s.color, g.reps ? .35 + .65 * g.clean / Math.max(1, Math.max(...bd.grips.map(x => x.clean)) || 1) : .2), g.short ]),
-          el('td', { class: 'r', text: g.reps ? `${g.clean}/${g.reps}${g.cleanPct != null ? ' · ' + g.cleanPct + '%' : ''}` : '—' }),
-          el('td', { class: 'r', text: g.weight != null ? CT.fmtLoad(g.weight) : '—' }),
-          el('td', { class: 'r', text: g.gained != null ? (g.gained > 0 ? '+' : '') + g.gained.toFixed(1) + ' kg' : '—' })
+          el('td', { class: 'r', text: g.reps ? `${g.clean}/${g.reps} · ${Math.round(100 * g.clean / g.reps)}%` : '—' }),
+          el('td', { class: 'r', text: CT.fmtLoad(g.weight) }),
+          el('td', { class: 'r', text: CT.fmtLoad(g.gained) })
         ])))
       ]));
+      if (bd.gainedFrom) {
+        rows.push(el('p', { class: 'tiny', style: 'margin-top:8px', text:
+          `Loads were re-based on ${dt.mini(bd.gainedFrom)}, so what's gained is counted from there rather than from the start of the block.` }));
+      }
     }
     if (bd.limit.count) {
       rows.push(el('p', { class: 'tiny', style: 'margin-top:10px', text:

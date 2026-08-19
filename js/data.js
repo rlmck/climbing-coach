@@ -287,6 +287,29 @@
      the exception on purpose, because a row with no rung is precisely
      a row that shouldn't win a comparison. */
   CT.climbs = {
+    /* Which climbs a modality's form keeps, and on which ladder —
+       one reading of the FORMS tuple, because two of them drift. The
+       ladder name goes out as it was written, for CT.GRADES to fall
+       back on the way it does everywhere else. */
+    specFor(modality) {
+      const form = CT.FORMS[modality] || [];
+      const spec = form.find(x => x[2] === 'climbs');
+      return spec ? { spec, set: spec[3], sets: form.some(x => x[0] === 'sets') ? 'sets' : null } : null;
+    },
+    /* What a session actually climbed, with any set count folded into
+       the counts. A 4x4 records the four problems apart from how many
+       times they went round, and four is not what was climbed — the
+       same reading retireRoute4x4 applies to the route 4x4s it
+       retired. Rows are copied rather than scaled in place, because
+       what somebody recorded stays recorded. */
+    rowsOf(ses) {
+      const found = CT.climbs.specFor(ses && ses.modality);
+      const f = (ses && ses.fields) || {};
+      if (!found || !Array.isArray(f.climbs)) return null;
+      const n = found.sets && typeof f[found.sets] === 'number' && f[found.sets] > 0 ? f[found.sets] : 1;
+      return { set: found.set, rows: n === 1 ? f.climbs
+        : f.climbs.map(r => Object.assign({}, r, { count: (r.count || 0) * n })) };
+    },
     /* What this row says it was, in the words it was graded in. */
     label(row) {
       if (!row) return null;
