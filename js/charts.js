@@ -16,6 +16,62 @@
     return { lo: Math.floor(min / s) * s, hi: Math.ceil(max / s) * s, step: s };
   };
 
+  /* ── axis labels that fit the bar they belong to ──────────
+     The one measurement on a bar chart nobody controls: the width is
+     set by how many bars there are and the words are somebody else's.
+     Drawn full-length they simply overprint each other — SVG text
+     neither wraps nor clips — so they are measured against the space
+     that exists and cut down to it: broken after a space or a hyphen
+     where that is enough, ellipsed where it isn't. Nothing is lost by
+     it, because the full text is in the tooltip and, wherever this
+     chart is drilled into, in the table underneath as well. */
+  const ELLIPSIS = '…';
+
+  /* Indices a line may break at: after a space, or after a hyphen
+     that is joining two things rather than trailing one. */
+  function breaks(s) {
+    const out = [];
+    for (let i = 1; i < s.length; i++) {
+      const prev = s[i - 1], next = s[i];
+      if (prev === ' ' || (prev === '-' && next !== ' ' && next !== '-')) out.push(i);
+    }
+    return out;
+  }
+
+  /* A dash or slash separating two words is a break opportunity that
+     says nothing once the break has happened — "Climb — Routes" wants
+     to read "Climb" over "Routes", not "Climb" over "— Routes", and
+     "Hangboard / Edge Pulls" wants "Edge Pulls" rather than "/ Edge". */
+  const trimLead = s => s.replace(/^[—–\/-]\s+/, '');
+
+  function clip(s, maxW, widthOf) {
+    if (widthOf(s) <= maxW) return s;
+    let lo = 0, hi = s.length;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (widthOf(s.slice(0, mid).trim() + ELLIPSIS) <= maxW) lo = mid; else hi = mid - 1;
+    }
+    return lo ? s.slice(0, lo).trim() + ELLIPSIS : ELLIPSIS;
+  }
+
+  function fitLabel(text, maxW, widthOf, maxLines) {
+    let rest = String(text == null ? '' : text).trim();
+    const lines = [];
+    while (rest && lines.length < maxLines) {
+      if (widthOf(rest) <= maxW) { lines.push(rest); return lines; }
+      if (lines.length === maxLines - 1) { lines.push(clip(rest, maxW, widthOf)); return lines; }
+      const at = breaks(rest);
+      if (!at.length) { lines.push(clip(rest, maxW, widthOf)); return lines; }
+      /* the most that fits, or failing that the least that doesn't —
+         two cramped lines still say more than one cramped line */
+      let cut = at[0];
+      for (const i of at) { if (widthOf(rest.slice(0, i).trim()) <= maxW) cut = i; else break; }
+      lines.push(clip(rest.slice(0, cut).trim(), maxW, widthOf));
+      rest = trimLead(rest.slice(cut).trim());
+    }
+    return lines;
+  }
+
   /* ── time-series line chart ─────────────────────────────── */
   function line(host, cfg) {
     const o = Object.assign({ height: 190, decimals: 1, unit: '', pad: 0.12, directLabel: true }, cfg);
@@ -332,21 +388,40 @@
     const draw = () => {
       const W = Math.max(320, host.clientWidth || 640), H = o.height;
       const m = { t: 14, r: 16, b: 26, l: 34 };
-      const iw = W - m.l - m.r, ih = H - m.t - m.b;
+      const iw = W - m.l - m.r;
       const n = Math.max(1, o.categories.length);
+      const gap = iw / n;
+
+      host.style.position = 'relative';
+      CT.ui.clear(host);
+      const svg = svgEl('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
+      host.appendChild(svg);
+
+      /* Measured in the axis font as the page actually renders it,
+         rather than counted in characters — the font is the page's to
+         change, and a chart that guessed would go on guessing wrong.
+         A host that isn't laid out yet measures zero; then nothing
+         fits, so the fallback is to leave the labels whole. */
+      const ruler = svgEl('text', { class: 'axis-t', visibility: 'hidden' });
+      svg.appendChild(ruler);
+      const widthOf = s => { ruler.textContent = s; return ruler.getComputedTextLength() || 0; };
+      const live = widthOf('MMMM') > 0;
+      const fitted = o.categories.map(cat =>
+        live ? fitLabel(cat.label, gap - 4, widthOf, 2) : [String(cat.label == null ? '' : cat.label)]);
+      svg.removeChild(ruler);
+
+      m.b += (Math.max(1, ...fitted.map(l => l.length)) - 1) * 10.5;
+      const ih = H - m.t - m.b;
 
       /* counts, not measurements — gridlines land on whole sessions
          rather than on the fractional steps nice() gives a line chart */
       const top = Math.max(1, ...o.categories.map(cat => cat.total));
       const step = top <= 5 ? 1 : Math.ceil(nice(0, top).step);
       const hi = Math.ceil(top / step) * step;
-      const gap = iw / n;
       const bw = Math.min(42, gap * 0.58);
       const X = i => m.l + gap * i + gap / 2;
       const Y = v => m.t + ih - (v / (hi || 1)) * ih;
       const base = Y(0);
-
-      const svg = svgEl('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img' });
 
       for (let v = 0; v <= hi + 1e-9; v += step) {
         svg.appendChild(svgEl('line', { class: 'grid-line', x1: m.l, x2: m.l + iw, y1: Y(v), y2: Y(v) }));
@@ -376,8 +451,14 @@
           const lbl = svgEl('text', { class: 'axis-t', x: cx, y: y - 6, 'text-anchor': 'middle' });
           lbl.textContent = String(cat.total); svg.appendChild(lbl);
         }
-        const t = svgEl('text', { class: 'axis-t', x: cx, y: H - 7, 'text-anchor': 'middle' });
-        t.textContent = cat.label; svg.appendChild(t);
+        const lines = fitted[i];
+        const t = svgEl('text', { class: 'axis-t', x: cx,
+          y: H - 7 - (lines.length - 1) * 10.5, 'text-anchor': 'middle' });
+        lines.forEach((ln, li) => {
+          const ts = svgEl('tspan', { x: cx, dy: li ? 10.5 : 0 });
+          ts.textContent = ln; t.appendChild(ts);
+        });
+        svg.appendChild(t);
       });
 
       /* hover / tap the nearest bar — the tooltip names every
@@ -403,9 +484,6 @@
       });
       svg.addEventListener('pointerleave', () => { tip.style.opacity = 0; });
 
-      host.style.position = 'relative';
-      CT.ui.clear(host);
-      host.appendChild(svg);
       host.appendChild(tip);
 
       if (CT.ui.ON) bars.forEach((b, i) => {

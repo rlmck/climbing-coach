@@ -22,19 +22,6 @@
     return el('div', { class: 'empty' }, [ el('h3', { text: title }), el('p', { text: line }) ]);
   }
 
-  /* The full modality name goes in the legend, the tooltip, and the
-     table; the chart only has ~90px per bar to put a label under. Cut
-     at the nearest word boundary rather than a flat character count —
-     "Climb — Routes" and "Climb — Bouldering" only differ after the
-     word a naive first-word cut would have thrown away. */
-  function shortLabel(text, max) {
-    max = max || 15;
-    if (text.length <= max) return text;
-    const cut = text.slice(0, max);
-    const sp = cut.lastIndexOf(' ');
-    return (sp > max * 0.55 ? cut.slice(0, sp) : cut).trim() + '…';
-  }
-
   /* swatch(colour, weight) — a filled block, at less than full opacity
      when it's standing in for something smaller than the biggest row
      in its list, so a breakdown carries its own rough bar chart even
@@ -203,7 +190,9 @@
             const rows = bd.kind === 'strength'
               ? bd.grips.map(g => ({ label: g.short, values: { [active]: g.clean }, total: g.clean }))
                   .concat(bd.limit.count ? [{ label: 'Limit', values: { [active]: bd.limit.count }, total: bd.limit.count }] : [])
-              : bd.rows.map(r => ({ label: shortLabel(r.label), full: r.label, values: { [active]: r.count }, total: r.count }));
+              /* the full name — how much of it fits under a bar is the
+                 chart's measurement to make, not a character count's */
+              : bd.rows.map(r => ({ label: r.label, values: { [active]: r.count }, total: r.count }));
             CT.charts.stackedBar(holder, { height: 200, series: [s], categories: rows });
             head.appendChild(el('button', { class: 'btn btn--ghost btn--sm', onclick: () => select(active) },
               [ icon('back'), 'All types' ]));
