@@ -19,8 +19,21 @@
       "README.md",
       "CLAUDE.md",
       "**/.*",
+      "**/.*/**",
       "**/node_modules/**",
       "criticalforce/**"
+    ],
+    "_ignoreComment": [
+      "**/.* excludes a dotfile and the dot-directory entry itself. It",
+      "does not exclude what is inside one: .git/config has a last",
+      "segment that starts with no dot, so the pattern never sees it.",
+      "The whole of .git was being served — 540 files, publicly, at",
+      "/.git/config and everything under it. The repo is public and the",
+      "config carries no credential, so nothing was leaked; it would",
+      "have been the day either stopped being true.",
+      "",
+      "**/.*/** is the half that was missing. Both are needed: the",
+      "first for .gitignore, the second for .git/objects."
     ],
     "_comment": [
       "Order matters and it is not the obvious way round: where two rules",
