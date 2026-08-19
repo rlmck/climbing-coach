@@ -271,6 +271,72 @@ whole seconds. A 3:30 set used to be either 3 or 4.
 the numbers mean", with the picked one highlighted. Ten points asked
 people to tell 6 from 7, which nobody does twice the same way.
 
+**Climbing, as opposed to training** — a fourth kind of session. The
+three the block prescribes are Strength, Endurance and Power Endurance;
+this is the Saturday at the crag that nobody prescribed and everybody's
+fingers remember on Monday. Until it existed the choice was to file one
+as Endurance, which is a lie about what it was, or not at all — and a
+record holding only the planned work can't explain a tired week.
+
+It logs the way Routes does, because it's the same question. Pick which
+it was — **Routes** or **Bouldering** — and the form asks what you
+climbed, as grade/count rows off the matching ladder, plus time on the
+wall and effort. Metres only on a rope: nobody counts the vertical on a
+boulder problem, and a box nobody fills teaches people to skip past the
+ones that matter. Two modalities rather than one form offering both
+ladders, because a grade off the wrong ladder is worse than no grade,
+and a day that was genuinely both was genuinely two sessions.
+
+**It is plannable and it is not a target.** It sits on the calendar in
+its own colour, drags between days, and shows up in the history and on
+the charts like anything else — and `S.weekProgress` never counts it, so
+no week is ever short of it and no streak turns on whether somebody went
+climbing. The coach's weekly targets deliberately has no fourth stepper:
+a target here would invite a coach to set one and then wonder why the
+week never counted it. The pickers say **"Not a target"** on the row
+itself, and the planning sheet says it in words.
+
+**The guidebook ships with the app** — 2,138 routes across 16 crags at
+Portland, precached by the service worker, because a crag is exactly
+where there is no signal. Search by name from a Climbing log — or from
+Endurance → Routes, since laps on route terrain are the same act wherever
+they happen, and plenty of endurance volume gets done outdoors — and the
+row carries the route's name, crag, grade and length, with the metres
+adding themselves up rather than being typed from memory.
+
+Three grade systems meet the app's two ladders, and each seam is a
+decision rather than an accident:
+
+*French sport* lands on the route ladder, which is the full French range
+for exactly this reason — the old `4` / `4+` / `5a` shorthand had nowhere
+to put 118 of Portland's routes. Sessions recorded under that shorthand
+are translated on read, never rewritten.
+
+*Font* lands on the boulder ladder through a table that takes the lower
+V of each band. A conversion that rounds up flatters every session it
+touches, and the numbers it flatters are the ones the progress charts
+read.
+
+*UK trad* lands nowhere, and that is the point. An adjectival grade
+folds difficulty together with how much trouble you're in if you fall
+off, and no single French number carries both — E1 5b is not 5b. So a
+trad route is counted as a climb, keeps its real grade on screen, and
+sits out of "hardest climbed". Absent is the honest answer.
+
+Whichever seam a route came through, **the grade on screen stays the
+guidebook's own words**. The ladder rung is a sort key, not a claim: a
+row that reads f6B+ is stored against V4 and still says f6B+.
+
+Two thirds of the routes have a length. **The rest can be typed in, and
+that goes to a shared collection** so nobody measures the same route
+twice — see the backend, because it's the first thing here that belongs
+to no athlete.
+
+**The search reaches exactly three modalities** — Endurance → Routes,
+and both Climbing styles. Every other form keeps the plain grade ladder,
+because a named route would mean nothing on a traverse or a hangboard,
+and a modality that isn't on the list simply isn't offered one.
+
 **Bodyweight** — clients log a reading whenever they weigh in, from the
 dashboard tile or the Progress screen. One reading per day; logging the
 same day again replaces it.
@@ -290,6 +356,43 @@ that is stored on the athlete as `refBodyweight` at the moment the sum
 was done — a reading deleted afterwards was never what the load came
 from, and rewriting the load to pretend otherwise would be a lie about a
 hang somebody actually did.
+
+**Weekly training volume** — the first card on Progress, and the only
+place the block is visible as a whole. One stacked bar per week, a
+segment per type, in the same colours the dots carry everywhere else,
+with the numbers behind a Table toggle.
+
+Climbing has no bar of its own here: it folds into Endurance, because a
+day at the crag and a day of route laps are the same kind of work for a
+volume overview, and a fourth bar that most weeks don't have reads worse
+than three that every week does. The block's own targets leave climbing
+out entirely; this doesn't.
+
+**Tap a bar, or a legend entry, and it drills down** — the chart itself
+redraws as that type's breakdown rather than a table appearing under an
+unchanged one. The fold comes apart again on the way in: *Climb —
+Routes* and *Climb — Bouldering* are their own rows, so the grouping is
+a presentation and never a loss.
+
+What a drill-down shows is whatever those sessions actually recorded and
+nothing beyond it. Endurance and PE get metres, time on the wall, total
+climbs, hardest route and hardest boulder, average effort, and the venues
+by name rather than by count. Strength has no modality, so it breaks down
+by what it does vary by: clean rate and kilos gained per grip, plus a
+line for limit bouldering, which has no grip to report against.
+
+**A stat with nothing behind it doesn't appear**, rather than showing up
+as a confident zero. Traversing keeps no list of climbs to pull a pitch
+count or a grade from; an empty metres box is not zero metres. The same
+distinction the log made when it recorded them has to survive being read
+back.
+
+Two of those numbers know less than they look like they do, and say so.
+*Gained* is measured from wherever the load replay starts, which is
+usually the block's opening but moves when a max is re-tested — so when
+it has moved, the table says from when. And a 4×4's climbs are counted as
+the four problems times the sets they went round, not the four problems,
+because the other reading understates those sessions fourfold.
 
 **Critical force** — the one thing on an athlete's record they can't put
 there themselves. See below.
@@ -371,6 +474,11 @@ athletes/{id}                    members[] — one entry per screen —
   …/maxHang/{id}
   …/criticalForce/{id}           date, grip, bodyweight,
                                  hands.{left,right} — one test, both hands
+
+routeLengths/{routeId}           m, by, at — how long a route is, where
+                                 the shipped guidebook left it blank.
+                                 The one collection outside the athlete
+                                 records
 ```
 
 A critical-force document carries the raw per-rep traces, which is most
@@ -382,6 +490,27 @@ is read as one thing.
 every subcollection. **Nothing derived is stored** — prescribed loads and
 clean-session streaks are replayed from the session list on the client,
 so no stored number can ever disagree with the sessions behind it.
+
+**`routeLengths` is the exception to all of that**, and the only one. A
+crag is a fact about the world rather than about anybody's training, so
+those lengths belong to everyone who can see them and hang off no athlete
+— which leaves `members` with nothing to say and the collection needing a
+rule of its own shape. Anyone signed in may **create** a document there;
+only a coach may **update** one. Firestore applies `create` solely where
+no document exists yet, so that split is exactly "anyone may fill a
+blank, nobody but a coach may change an answer": a mistyped 240 can be
+corrected, and cannot quietly replace a number somebody measured. The id
+is the app's own route slug — crag, area and name — so a document is
+worthless without the guidebook to read it against and says nothing about
+who climbed what.
+
+It is read once at sign-in rather than listened to. It holds only the
+blanks, it changes at the rate somebody climbs an unmeasured route, and a
+live listener would be a socket held open for a number that will be the
+same tomorrow. Writing one is deliberately not awaited either: the two
+expected failures are somebody else filling the same blank first and a
+phone at the bottom of a cliff, and neither is worth interrupting a log
+to report — the length is already on that session whatever happens.
 
 ### Signing in is six digits
 
@@ -495,7 +624,9 @@ went from ten points to five, and route 4×4s were retired into Routes,
 which records the same laps with more of the truth in them — the four
 routes were each climbed once per set, so the sets fold into the counts
 and four routes over four sets reads as sixteen climbs rather than
-four. Old documents aren't rewritten —
+four. The route ladder also went from a `4` / `4+` / `5a` shorthand to
+the full French range, so the grades stored under the old one are mapped
+onto the new. Old documents aren't rewritten —
 what someone recorded is what they recorded — so `CT.migrateSession`
 translates them once, in `repo.js`, where the world is assembled.
 Everything downstream only ever sees the current shape, and anything
@@ -533,23 +664,38 @@ js/repo.js             Firestore in, CT.world out
 js/data.js             taxonomy, field schemas, the legacy-shape
                        migration, and the mock world, generated
                        relative to today's date
+js/crags.data.js       Portland as five columns per route. Generated —
+                       don't hand-edit it
+js/crags.js            the guidebook, searchable: three grade systems
+                       onto the app's two ladders, and how long a route
+                       is. Loads after data.js, whose ladders it reads
 js/store.js            derived state, the progression rule, rest-day rules
 js/ui.js               DOM helpers, icons, the GSAP motion vocabulary
-js/charts.js           hand-rolled SVG charts
+js/charts.js           hand-rolled SVG charts, each fitting its own
+                       labels to the room it has — SVG text neither
+                       wraps nor clips, so nobody else can do it for them
 js/views/              signin (the code pad, and the coach's way in) ·
                        dashboard · schedule · progress · coach ·
                        invite (a code, how to replace it, and how to
                        add a second screen)
 js/logs/               strength — hangboard + limit bouldering; also owns
                        the sheet shell and the date bar ·
-                       session (endurance, PE, bodyweight, type chooser,
-                       plan-ahead picker, and the field controls every
-                       form is built from) ·
+                       session (endurance, PE, climbing, bodyweight,
+                       type chooser, plan-ahead picker, the route
+                       search, and the field controls every form is
+                       built from) ·
                        loads (the max/share/working-load control, shared
                        with onboarding, and the sheet that re-bases a
                        block mid-flight) · onboard ·
                        cfupload (device files in, confirmed by the coach)
 js/app.js              shell, routing, user switching
+sw.js                  the offline shell, network-first. Every file
+                       above is named in its precache list
+routes_with_length.csv the guidebook as typed, and the only copy of it
+                       worth editing
+tools/build-crags.mjs  that CSV → js/crags.data.js. Run by hand when the
+                       CSV changes; not a build step, of which there
+                       are none
 ```
 
 Every animation degrades to an instant state change when GSAP is absent
