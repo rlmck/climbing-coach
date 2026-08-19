@@ -1,19 +1,42 @@
 # Coach — climbing training prototype
 
-A front-end-only, clickable prototype. No backend, no database, no build step.
-All data is generated in memory at page load and thrown away on refresh.
+A coach, their athletes, and the training each of them actually did.
+Prototype in the sense that the chart shapes and the streak rules are a
+first pass — not in the sense that the data is pretend. It runs against
+Firestore, installs to a home screen, and keeps working in a basement.
+
+**No build step**, and nothing to install to work on it. `index.html`
+loads plain `<script>` tags in dependency order and every file hangs
+itself off one `CT` global.
+
+**`js/config.js` decides which world it runs in.** As committed, `apiKey`
+is filled in and the app talks to the real project. Blank it and the same
+UI runs on a seeded mock world — three people, no auth, generated in
+memory at page load and thrown away on refresh. There is no third mode —
+see [The backend](#the-backend).
+
+Live at <https://coach-climbing-app.web.app>.
 
 ## Run it
 
-Open `index.html` directly, or serve the folder:
+Serve the folder:
 
 ```
 python -m http.server 5177
 ```
 
-then visit <http://localhost:5177>. GSAP loads from a CDN, so the first
-load needs a network connection; without it the app still works, it just
-stops animating.
+then visit <http://localhost:5177>. Not `file://` — a page opened that
+way can register no service worker and reach no Firestore, so what's left
+of it isn't the app.
+
+GSAP is vendored, so nothing about the animation needs a network. The
+fonts come from Google's CDN and fall back to system faces without one,
+and in the mock world that is the only thing a first load reaches for at
+all. Against the real project the Firebase SDK is a pinned dynamic import
+from gstatic.
+
+Add `?emulate` on localhost to point it at the emulator suite in
+`firebase.json` rather than the live project.
 
 ## Switching users
 
