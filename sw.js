@@ -10,7 +10,7 @@
    Fonts are the exception — they never change, so they stay
    cache-first once fetched.
    ═══════════════════════════════════════════════════════════════ */
-const CACHE = 'coach-v32';
+const CACHE = 'coach-v33';
 
 /* Which build is actually running, asked for by the app and shown in the
    sidebar. "Is my phone up to date" is otherwise unanswerable from the
@@ -49,7 +49,6 @@ const SHELL = [
   './assets/icon-512.png',
   './assets/apple-touch-icon.png',
   './vendor/gsap.min.js',
-  './vendor/Draggable.min.js',
   './vendor/Flip.min.js',
   './js/config.js',
   './js/firebase.js',

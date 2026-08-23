@@ -521,6 +521,12 @@
       add('endurance', template.endurance);
       if (w >= peFromWeek) add('pe', template.pe);
     }
+    /* A template can put two sessions on one day, and which comes first
+       is something the athlete rearranges later — so the plan says which
+       from the start rather than leaving it to the order these were
+       pushed in. Strength leads, because that is the order above. */
+    const nth = {};
+    slots.forEach(s => { s.order = nth[s.date] || 0; nth[s.date] = s.order + 1; });
     return slots;
   }
 
@@ -735,7 +741,7 @@
                         .find(d => d < todayISO && !slots.some(s => s.date === d));
       if (!day) continue;
       const slot = { id: uid('slot'), week: w, type: 'climbing', date: day,
-                     status: 'completed', sessionId: null, adhoc: true };
+                     status: 'completed', sessionId: null, adhoc: true, order: 0 };
       slots.push(slot);
       fill(slot);
     }

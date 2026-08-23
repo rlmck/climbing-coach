@@ -159,13 +159,33 @@ plan for a week that never had one. A block that has run out says
 **"Block finished"** on the dashboard instead of showing its final week
 for ever.
 
-**Weekly schedule** — drag a session to a different day, or focus one and
-press ← / →. Double-click to log it. Rest-day guidance appears inline
+**Weekly schedule** — **press and hold** a session for a moment and it
+comes up into the hand; drop it on another day, or above or below the
+other session sharing its own. Rest-day guidance appears inline
 underneath and never blocks the move: drop a second Strength session
 within two days of the first, or bunch four training days together, and
 it says so. Jade's default week already trips one. Guidance about days
 that have already been trained through stays quiet — there's nothing left
 to act on.
+
+The hold is the point. A tile that moved the instant a finger touched it
+could not share a screen with a week that scrolls — every attempt to
+scroll began by grabbing whatever session was under the thumb. Under
+four hundred milliseconds the gesture belongs to the page: a flick
+scrolls it, a tap opens the session. Only a press that has stopped and
+waited picks anything up, and a phone that can buzz says so when it
+does. The keyboard needs no such distinction — focus a session and
+← / → move it a day, ↑ / ↓ move it within one.
+
+**Two sessions on one day are in an order**, and it is the order they'll
+be done in: hangboarding before a route session is not the same afternoon
+as the other way round. Dragging one past the other says which, and a
+line on the edge the incoming tile would take says where it will land
+before you let go. A day runs down the screen on a wide one and across it
+on a phone, so that line knows which of its four sides to be. Nothing
+recorded before this had an order, and absent is not first — those keep
+the order they were written in until something rearranges them, which
+settles that day for good.
 
 A day holds **two sessions at most**. Drag a third onto a full day and it
 goes red and refuses. The cap governs planning only: logging what you
@@ -491,7 +511,9 @@ invites/{123456}                 the six digits ARE the id. athleteId,
 athletes/{id}                    members[] — one entry per screen —
                                  coachId, clientUid, invitePin, devicePin,
                                  block, targets, template, startLoads
-  …/slots/{id}                   week, type, date, sessionId
+  …/slots/{id}                   week, type, date, order, sessionId
+                                 — order is the position within its day,
+                                 absent on anything never rearranged
   …/sessions/{id}                date, type, mode, reps|problems|fields, notes
   …/bodyweight/{yyyy-mm-dd}      one reading per day — the date is the key
   …/maxHang/{id}

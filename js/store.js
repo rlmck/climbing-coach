@@ -136,7 +136,24 @@
       const a = S.weekStart(c, w), b = dt.addISO(a, 6);
       return c.slots.filter(s => s.date >= a && s.date <= b).sort((x,y) => x.date < y.date ? -1 : 1);
     },
-    slotsOn(c, iso) { return c.slots.filter(s => s.date === iso); },
+    /* A day's sessions in the order they will be done. Two can share a
+       day and which one comes first is a real decision — hangboarding
+       before a route session is not the same afternoon as the other way
+       round — so `order` records it rather than leaving it to whatever
+       order the documents happened to arrive in.
+
+       Blank is not zero here either. `order` is absent on everything
+       planned before it existed, and absent means "never placed": those
+       keep the order they arrived in, behind anything that was. One drag
+       gives a day explicit positions for good. */
+    slotsOn(c, iso) {
+      const rank = s => typeof s.order === 'number' ? s.order : null;
+      return c.slots.filter(s => s.date === iso).sort((a, b) => {
+        const x = rank(a), y = rank(b);
+        if (x === null) return y === null ? 0 : 1;
+        return y === null ? -1 : x - y;
+      });
+    },
 
     /* A day holds two planned sessions at most — a third stops fitting the
        day cell and stops being a day anyone would actually train. This
@@ -479,15 +496,40 @@
       return c.sessions.slice().sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
     },
 
-    moveSlot(c, slotId, toISO) {
+    /* Which day a session sits on, and where in that day. `index` is a
+       position among the destination's sessions — 0 puts it first —
+       and null appends, which is what moving a day left or right means.
+       Passing the day it is already on is a reorder, not a move.
+
+       Every slot whose position actually changed is written, and only
+       those: renumbering a day of two costs at most two documents. */
+    placeSlot(c, slotId, toISO, index) {
       const slot = c.slots.find(s => s.id === slotId);
       if (!slot) return false;
-      if (slot.date !== toISO && S.dayIsFull(c, toISO, slotId)) return false;
+      const fromISO = slot.date;
+      if (fromISO !== toISO && S.dayIsFull(c, toISO, slotId)) return false;
+
       slot.date = toISO;
       slot.week = S.weekOf(c, toISO);
       const ses = slot.sessionId && S.session(c, slot.sessionId);
       if (ses) ses.date = toISO;
-      CT.repo.saveSlot(c, slot);
+
+      const line = S.slotsOn(c, toISO).filter(s => s.id !== slotId);
+      const at = index == null ? line.length : Math.max(0, Math.min(line.length, index));
+      line.splice(at, 0, slot);
+
+      /* The slot itself is always written — its date moved even when its
+         position in the day didn't. */
+      const dirty = new Set([slot]);
+      line.forEach((s, i) => { if (s.order !== i) { s.order = i; dirty.add(s); } });
+
+      /* The day it left closes the gap behind it, so nothing keeps a
+         position there is no longer anything holding open. */
+      if (fromISO !== toISO) {
+        S.slotsOn(c, fromISO).forEach((s, i) => { if (s.order !== i) { s.order = i; dirty.add(s); } });
+      }
+
+      dirty.forEach(s => CT.repo.saveSlot(c, s));
       if (ses) CT.repo.saveSession(c, ses);
       return true;
     },
@@ -507,7 +549,14 @@
     addPlannedSlot(c, iso, type) {
       if (S.dayIsFull(c, iso)) return null;
       const slot = { id: CT.repo.newId(c.id, 'slots'), week: S.weekOf(c, iso),
-                     type, date: iso, status: 'suggested', sessionId: null };
+                     type, date: iso, status: 'suggested', sessionId: null,
+                     /* Last in the day it lands on — a session added to a
+                        day is one added after what's already there. One
+                        past the highest rather than a count, because
+                        removing a slot leaves the gap it was in, and two
+                        sessions sharing a number is the one thing the
+                        sort can't resolve. */
+                     order: S.slotsOn(c, iso).reduce((n, s) => Math.max(n, (s.order || 0) + 1), 0) };
       c.slots.push(slot);
       CT.repo.saveSlot(c, slot);
       return slot;
