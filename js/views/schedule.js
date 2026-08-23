@@ -328,23 +328,7 @@
       }
       shell.appendChild(grid);
 
-      shell.appendChild(el('div', { class: 'card', style: 'padding:14px 20px;display:flex;gap:22px;flex-wrap:wrap;align-items:center' }, [
-        legend('var(--spruce-tint)', 'var(--spruce)', 'Completed'),
-        legend('var(--surface-2)', 'var(--line-2)', 'Suggested'),
-        legend('transparent', 'var(--line-2)', 'Missed'),
-        el('p', { class: 'tiny', style: 'margin-left:auto',
-          text: hasDrag ? 'Tap a session to log or remove it · press and hold to drag it'
-                        : 'Tap a session to log or remove it · focus one and use ← → ↑ ↓ to move it' })
-      ]));
-
       motion.enter(shell);
-    }
-
-    function legend(bg, bar, label) {
-      return el('span', { class: 'row', style: 'gap:8px;font-size:12.5px;color:var(--ink-2)' }, [
-        el('span', { style: `width:22px;height:14px;border-radius:5px;background:${bg};box-shadow:inset 0 0 0 1px ${bar}` }),
-        label
-      ]);
     }
 
     function navBtn(dir, disabled, fn) {
