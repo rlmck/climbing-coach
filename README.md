@@ -69,9 +69,12 @@ at what's prescribed and you can move it, with the calculated figure one
 tap away if you change your mind. The hang count is a stepper per grip,
 so six on the drag and none on the half-crimp is a session the log will
 take — a grip with no hangs against it wasn't trained, and it moves
-neither that grip's load nor its clean streak. What you log is what the
-next session is worked out from, so going heavier or lighter carries
-forward rather than being argued with.
+neither that grip's load nor its clean streak. Up to ten, and the pucks
+lay themselves out to suit the count: one row to five, two even rows
+past that, so six is 3 and 3 and ten is 5 and 5 rather than a full row
+with one wide stray underneath. What you log is what the next session is
+worked out from, so going heavier or lighter carries forward rather than
+being argued with.
 
 **Working loads are a share of the max, not the max.** Onboarding asks
 what the athlete can hold once — added load, 20 mm, seven seconds — and

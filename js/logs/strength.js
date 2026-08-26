@@ -349,7 +349,13 @@
 
       function paintPucks() {
         CT.ui.clear(repsHost);
-        countTxt.textContent = String(reps[g.id].length);
+        const n = reps[g.id].length;
+        countTxt.textContent = String(n);
+        /* Up to five hangs sit on one row; past that they split into two
+           even rows — six is 3 and 3, seven is 4 and 3, ten is 5 and 5.
+           The CSS can't count, so the row width is handed to it. */
+        repsHost.style.setProperty('--rep-cols', String(n > 5 ? Math.ceil(n / 2) : Math.max(n, 1)));
+        repsHost.classList.toggle('reps--two', n > 5);
         reps[g.id].forEach((state, i) => {
           const glyph = el('span', { class: 'rep__glyph' }, [ icon('grip') ]);
           const label = el('span', { class: 'rep__lbl', text: 'Rep ' + (i + 1) });
