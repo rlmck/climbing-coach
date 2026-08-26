@@ -287,7 +287,7 @@ built from `CT.FORMS`. What the forms ask for:
 not the hardest thing in it. Routes, boulder 4×4s and long problems
 all take as many grade/count rows as the session actually had,
 in the order they were climbed, with a running total and the hardest
-grade underneath. Traversing and 1-on-1-off take a single grade behind
+grade underneath. Traversing and Intervals take a single grade behind
 a toggle — off by default, because most traverses have no grade anybody
 would defend, and off is stored as nothing rather than as a guess.
 
@@ -307,6 +307,23 @@ meaningless. Logged apart, and the style is what the history rows and
 day cells show. Both, and the 7:3 repeaters, also ask which grip —
 half-crimp or three-finger drag, the same pair the strength protocol
 runs on.
+
+*How long on, how long off.* **Intervals** was "1-on-1-off", and the
+protocol was welded into the label: the form asked for a round count
+and nothing else, because the two clocks were in the name. Every other
+ratio anybody actually climbs — 1 on 2 off most of all — was then either
+unloggable or filed as a lie about its rest. So the modality is now
+Intervals, the work and the rest are two duration boxes like any other,
+and 1:1 is only where they open. Sessions recorded under the old form
+are read as the 60 and 60 they meant, in `CT.migrateFields`, and not
+rewritten. Under the boxes the form says what they come to — "10m
+climbing · 28m start to finish" — because three numbers describing a
+session that's either forty minutes or two hours is arithmetic nobody
+does in their head mid-log. The rest between rounds is counted and the
+one after the last round isn't; nobody serves a rest with nothing left
+to climb. The same pairing reaches the history line, which now reads
+`10 × 1m on, 2m off` rather than `10 rounds` — ten rounds of a minute
+and ten of four were the same three words and are not the same session.
 
 *Minutes and seconds.* Every duration is two boxes and is stored as
 whole seconds. A 3:30 set used to be either 3 or 4.
@@ -428,8 +445,9 @@ by what it does vary by: clean rate and kilos gained per grip, plus a
 line for limit bouldering, which has no grip to report against.
 
 **A stat with nothing behind it doesn't appear**, rather than showing up
-as a confident zero. Traversing keeps no list of climbs to pull a pitch
-count or a grade from; an empty metres box is not zero metres. The same
+as a confident zero. Traversing and Intervals keep no list of climbs to
+pull a pitch count or a grade from; an empty metres box is not zero
+metres. The same
 distinction the log made when it recorded them has to survive being read
 back.
 

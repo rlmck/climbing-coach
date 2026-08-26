@@ -269,7 +269,11 @@
     if (f.grade) bits.push(f.grade);
     if (f.load) bits.push(f.load + ' kg');
     if (f.sets) bits.push(f.sets + ' sets');
-    if (f.rounds) bits.push(f.rounds + ' rounds');
+    /* The rounds carry their own clocks now that the clocks vary —
+       "10 rounds" of a minute and "10 rounds" of four are not the same
+       session, and the line used to call them the same thing. */
+    const rounds = CT.fmtRounds(f.rounds, f.workSec, f.restSec);
+    if (rounds) bits.push(rounds);
     if (f.durationSec) bits.push(CT.fmtDuration(f.durationSec));
 
     /* effort is the one field worth keeping whatever else got trimmed */

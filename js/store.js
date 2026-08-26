@@ -683,7 +683,7 @@
           if (r != null) { rpeSum += r; rpeCount++; }
           /* Only the modalities that log a list of climbs (routes,
              boulder 4×4s, long problems, and both climbing styles)
-             have anything to add here. Traversing and 1-on-1-off do
+             have anything to add here. Traversing and intervals do
              record a grade, but it is the grade of the terrain being
              circuited rather than of anything sent, and a lap on it
              is not an ascent that should win "hardest". Kept apart by

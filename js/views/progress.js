@@ -40,7 +40,7 @@
   /* the modality/duration/metres shape — endurance (climbing folded
      in), power endurance. Everything past the session count is only
      as rich as what those modalities actually ask for — traversing
-     and 1-on-1-off have no climbs list to pull a pitch count or a
+     and intervals have no climbs list to pull a pitch count or a
      grade from, so a stat with nothing behind it just doesn't appear
      rather than showing up as a confident zero. */
   function modalityDrill(s, bd) {

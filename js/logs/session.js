@@ -492,7 +492,7 @@
     const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
-      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
+      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, intervals'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters'],
       ['climbing',  'Climbing',        'A session on the wall or at the crag — routes or problems']
     ];
@@ -557,7 +557,7 @@
     const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
     const kinds = [
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
-      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, 1-on-1-off'],
+      ['endurance', 'Endurance',       'Routes, traversing, edge pulls, intervals'],
       ['pe',        'Power Endurance', 'Boulder 4×4s, wall crawls, repeaters'],
       ['climbing',  'Climbing',        'A day on the wall or at the crag — routes or problems']
     ];
@@ -865,8 +865,20 @@
         if (metresNode) metresNode.auto(m);
       };
 
+      /* What the boxes come to, under the boxes. A form whose work and
+         rest are the athlete's own is a form where the round count no
+         longer implies a session length, and the athlete setting them
+         is the one person who wants that arithmetic done. Forms with
+         no clocks to add up never show the line at all. */
+      const tally = el('p', { class: 'tiny', style: 'margin-top:10px;display:none' });
+      function paintTally() {
+        const t = CT.intervalTotal(values);
+        tally.textContent = t || '';
+        tally.style.display = t ? '' : 'none';
+      }
+
       CT.FORMS[modality].forEach(([key, label, kind, def]) => {
-        const set = v => values[key] = v;
+        const set = v => { values[key] = v; paintTally(); };
         const options = kind === 'select' ? String(def).split(',') : null;
         let init = options ? options[Math.floor(options.length / 2)] : def;
         if (kind === 'climbs') init = [];
@@ -916,6 +928,8 @@
       });
 
       formHost.appendChild(grid);
+      paintTally();
+      formHost.appendChild(tally);
       formHost.appendChild(el('div', { class: 'field', style: 'margin-top:14px' }, [
         el('label', { text: 'Notes' }),
         el('textarea', { class: 'input', id: 'eNotes', text: editing ? editing.notes : '',

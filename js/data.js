@@ -138,7 +138,10 @@
       { id:'routes',     name:'Routes',       desc:'Laps on route terrain, at whatever grades you climbed' },
       { id:'traverse',   name:'Traversing',   desc:'Low-level, sustained, no rest' },
       { id:'edgepulls',  name:'Hangboard / Edge Pulls', desc:'Sub-maximal loaded pulls — board or single hand' },
-      { id:'oneonoff',   name:'1-on-1-off',   desc:'1 minute climbing, 1 minute rest' }
+      /* The id is a fossil of the name: this was 1-on-1-off, and the
+         sessions that say `oneonoff` are still these. It was generalised
+         rather than retired, so nothing needs translating — see FORMS. */
+      { id:'oneonoff',   name:'Intervals',    desc:'Timed laps — you set the work and the rest' }
     ],
     pe: [
       { id:'boulder4x4', name:'Boulder 4×4s',  desc:'4 problems × 4 sets, minimal rest' },
@@ -257,7 +260,12 @@
     routes:      [ ['climbs','What you climbed','climbs','route'], ['metres','Distance climbed','metres',null], ['durationSec','Time on the wall','duration',75*60], ['rpe','Effort','rpe',3] ],
     traverse:    [ ['rounds','Rounds','number',6], ['workSec','Work','duration',180], ['restSec','Rest','duration',180], ['grade','Grade','grade','route'], ['rpe','Effort','rpe',3] ],
     edgepulls:   [ ['style','Style','choice','edgeStyle'], ['grip','Grip','choice','grip'], ['edge','Edge','select','25 mm,20 mm,18 mm,15 mm'], ['load','Load','kg',30], ['sets','Sets','number',5], ['workSec','Time per set','duration',180], ['rpe','Effort','rpe',3] ],
-    oneonoff:    [ ['rounds','Rounds — 1 min on, 1 min off','number',10], ['grade','Terrain grade','grade','route'], ['rpe','Effort','rpe',3] ],
+    /* The interval form used to have its protocol welded into its label:
+       one minute on, one minute off, with only the round count asked for.
+       Every other ratio anybody actually climbs — 1:2 most of all — was
+       then either unloggable or logged as a lie about its rest. Both
+       clocks are the athlete's now, and 60/60 is only where they open. */
+    oneonoff:    [ ['rounds','Rounds','number',10], ['workSec','Time on','duration',60], ['restSec','Time off','duration',60], ['grade','Terrain grade','grade','route'], ['rpe','Effort','rpe',3] ],
 
     boulder4x4:  [ ['climbs','The four problems','climbs','boulder'], ['sets','Sets','number',4], ['restSec','Rest between sets','duration',240], ['rpe','Effort','rpe',4] ],
     wallcrawl:   [ ['rounds','Rounds','number',4], ['workSec','Round length','duration',240], ['restSec','Rest','duration',300], ['rpe','Effort','rpe',4] ],
@@ -374,6 +382,32 @@
     return r + 's';
   };
 
+  /* "10 × 1m on, 2m off". A round count said everything worth saying
+     while the two clocks were fixed by the modality's name, and says
+     almost nothing now they aren't — so wherever the count is shown the
+     durations go with it, and a form that asks for no clocks still gets
+     its plain count back. */
+  CT.fmtRounds = function (rounds, workSec, restSec) {
+    if (typeof rounds !== 'number' || !isFinite(rounds) || rounds <= 0) return null;
+    const on = CT.fmtDuration(workSec), off = CT.fmtDuration(restSec);
+    if (!on) return rounds + (rounds === 1 ? ' round' : ' rounds');
+    return rounds + ' × ' + on + ' on' + (off ? ', ' + off + ' off' : '');
+  };
+
+  /* What a set of intervals comes to, for the form taking them down —
+     three boxes nobody adds up in their head, describing a session that
+     is either forty minutes or two hours. The rest is counted between
+     rounds and not after the last one: nobody serves a rest with nothing
+     left to climb, and quoting 30m for something that took 28 is exactly
+     the sort of small confident lie the rest of this app avoids. */
+  CT.intervalTotal = function (f) {
+    const n = f.rounds, w = f.workSec, r = f.restSec;
+    if (typeof n !== 'number' || n <= 0 || typeof w !== 'number' || w <= 0) return null;
+    const work = CT.fmtDuration(n * w) + ' climbing';
+    if (typeof r !== 'number' || r <= 0) return work;
+    return work + ' · ' + CT.fmtDuration(n * w + (n - 1) * r) + ' start to finish';
+  };
+
   /* Vertical metres, when somebody counted them. Nothing is not zero:
      a session with no distance against it wasn't measured, and printing
      "0 m" would say it was and that they climbed nothing.
@@ -411,7 +445,13 @@
     route4x4:    { minutes:{ restMin:'restSec' }, climbs:{ grade:'grade', count:null, fallback:4, set:'route' } },
     boulder4x4:  { minutes:{ restMin:'restSec' }, climbs:{ grade:'grade', count:null, fallback:4, set:'boulder' } },
     wallcrawl:   { minutes:{ restMin:'restSec' } },
-    longboulder: { climbs:{ grade:'grade', count:'problems', set:'boulder' } }
+    longboulder: { climbs:{ grade:'grade', count:'problems', set:'boulder' } },
+    /* Not a rename but a widening: the interval form asked for a round
+       count and fixed the two clocks at a minute each in its own name.
+       A session recorded then really was 60 on and 60 off, so it says so
+       on the way in — otherwise the whole history reads as intervals of
+       no length at all, which is a worse answer than the one it meant. */
+    oneonoff:    { assume:{ workSec:60, restSec:60 } }
   };
 
   /* The route ladder's old shorthand at its easy end, in French. '4'
@@ -433,6 +473,15 @@
         const o = own();
         if (typeof o[to] !== 'number') o[to] = Math.round(fields[from] * 60);
         delete o[from];
+      });
+    }
+
+    /* Only where the old form left no room for the question — a field
+       the athlete has since answered, including answering it as zero,
+       is never overwritten by what the form used to assume. */
+    if (spec && spec.assume) {
+      Object.keys(spec.assume).forEach(k => {
+        if (typeof fields[k] !== 'number') own()[k] = spec.assume[k];
       });
     }
 
