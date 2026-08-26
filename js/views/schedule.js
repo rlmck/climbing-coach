@@ -414,7 +414,29 @@
       endPress();
       /* Still, and brief. The hold check matters where there is no drag
          to have started — a lifted tile has already cleared the press. */
-      if (moved <= TAP_SLOP && held <= HOLD_MS) open();
+      if (moved <= TAP_SLOP && held <= HOLD_MS) { swallowGhostClick(); open(); }
+    }
+
+    /* The click a touch screen makes once the finger is already up.
+
+       It is hit-tested where the finger was at that moment, not where it
+       went down — and by then the tap has opened the sheet, so the click
+       is delivered to whatever the sheet has put over that spot. That is
+       the scrim, and the scrim dismisses. The sheet appeared and vanished
+       in the same breath, which is what tapping a planned session on a
+       phone did from the moment the tap stopped being read from the click
+       itself and started being read from the pointer events.
+
+       So a tap swallows the click it is about to cause, once. On a
+       desktop that click is real and lands back on the tile, where
+       nothing is listening for one, so eating it costs nothing there. If
+       it never arrives, it is forgotten a moment later. */
+    function swallowGhostClick() {
+      let timer = null;
+      const kill = ev => { ev.stopPropagation(); ev.preventDefault(); done(); };
+      function done() { clearTimeout(timer); window.removeEventListener('click', kill, true); }
+      timer = setTimeout(done, 500);
+      window.addEventListener('click', kill, true);
     }
 
     function onCancel(ev) {
