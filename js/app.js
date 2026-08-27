@@ -198,8 +198,8 @@
        the wrong person is a nuisance to unpick.
 
        Power Endurance is offered whatever week the block is in. The
-       final three weeks are where a plan puts it, not a rule about
-       what an athlete is allowed to have done. */
+       four weeks before the rest are where a plan puts it, not a rule
+       about what an athlete is allowed to have done. */
     const c = S.logTarget();
     CT.ui.$('.rail__log').style.display = c ? '' : 'none';
     const logHd = CT.ui.$('.rail__log .eyebrow');

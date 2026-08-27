@@ -500,6 +500,11 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 }
 .ribbon__wk--pe .ribbon__bar{ background:var(--ember-tint); }
 .ribbon__wk--pe .ribbon__bar i{ background:#DCB08A; }
+/* The rest week is the one week with nothing in it, and a bar that
+   fills is a bar that says otherwise. Outlined and hollow — visibly a
+   week of the block, visibly not a week of work. */
+.ribbon__wk--rest .ribbon__bar{ background:transparent; box-shadow:inset 0 0 0 1px var(--ink-4); }
+.ribbon__wk--rest .ribbon__bar i{ display:none; }
 .ribbon__wk--now .ribbon__bar{ height:12px; }
 .ribbon__wk--now .ribbon__bar i{ background:var(--spruce); }
 .ribbon__wk--now.ribbon__wk--pe .ribbon__bar i{ background:var(--ember); }

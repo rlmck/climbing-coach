@@ -267,8 +267,9 @@
                                           : week < 1 ? 'Before the block' : 'After the block' }),
           el('p', { class: 'block__dates', text: `${dt.short(wkStart)} — ${dt.short(dt.addISO(wkStart, 6))}` })
         ]),
-        phase ? el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }) : null,
-        prog ? el('span', { class: 'chip' + (prog.hit ? ' chip--ink' : ''), text: `${prog.have}/${prog.need} done` })
+        phase ? el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember'
+                                              : phase === 'Rest' ? 'chip--clay' : 'chip--spruce'), text: phase }) : null,
+        prog && prog.need ? el('span', { class: 'chip' + (prog.hit ? ' chip--ink' : ''), text: `${prog.have}/${prog.need} done` })
              : el('span', { class: 'chip', text: 'No targets' }),
         el('div', { style: 'margin-left:auto;display:flex;gap:8px' }, [
           week !== here()
@@ -282,6 +283,31 @@
          reading their own, and a line that says otherwise is one more
          chance to log against the wrong person. */
       const whose = S.whose(c), Whose = S.Whose(c);
+
+      /* An empty week inside the block looks exactly like an empty week
+         outside one, and the difference is the whole point of it.
+
+         It is not always empty. A block built before the rest week
+         existed has sessions planned right through its final week, and
+         they are left where they are — old plans are migrated on read,
+         never rewritten out from under the athlete. So the line says
+         which of the two situations this is rather than insisting on
+         the tidy one. */
+      if (planned && S.isRestWeek(c, week)) {
+        const left = S.slotsInWeek(c, week).filter(s => !s.sessionId).length;
+        shell.appendChild(el('div', { class: 'nudge' }, [
+          icon('info'),
+          el('p', { html: left
+            ? `The rest week before <b>${dt.short(S.peakDate(c))}</b> — but ${left} ` +
+              `${left === 1 ? 'session is' : 'sessions are'} still planned in it, from before this was the ` +
+              `rest week. Nothing counts them and nothing goes wrong if they don’t happen; tap one to take ` +
+              `it out of the plan.`
+            : `The rest week. Nothing is prescribed — that <i>is</i> the prescription, with ` +
+              `<b>${dt.short(S.peakDate(c))}</b> on the other side of it. Log anything ` +
+              `${S.forOther(c) ? c.name + ' does anyway' : 'you do anyway'} — no target is going unmet here.` })
+        ]));
+      }
+
       if (!planned) shell.appendChild(el('div', { class: 'nudge' }, [
         icon('info'),
         el('p', { html: week < 1

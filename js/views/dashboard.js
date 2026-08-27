@@ -10,17 +10,24 @@
     const cur = S.currentWeek(c), todayISO = dt.iso(dt.today());
     const weeks = [];
     for (let w = 1; w <= c.block.weeks; w++) {
-      const isPE  = w >= c.block.peFromWeek;
+      const isRest = S.isRestWeek(c, w);
+      const isPE  = !isRest && w >= S.peFromWeek(c);
       const isNow = w === cur;
       const start = S.weekStart(c, w);
       const prog  = S.weekProgress(c, w);
-      const fill  = w < cur ? (prog.hit ? 1 : Math.max(0.12, prog.pct))
+      /* A rest week has nothing to fill and its progress is 1 out of
+         nothing — a full bar there would read as a week completed
+         rather than a week with nothing in it. It stays hollow. */
+      const fill  = isRest ? 0
+                  : w < cur ? (prog.hit ? 1 : Math.max(0.12, prog.pct))
                   : w > cur ? 0
                   : Math.max(0.06, prog.pct);
       const bar = el('span', { class: 'ribbon__bar' }, [ el('i') ]);
       const wk = el('div', {
-        class: 'ribbon__wk' + (isPE ? ' ribbon__wk--pe' : '') + (isNow ? ' ribbon__wk--now' : ''),
-        title: `Week ${w} · ${S.phaseOfWeek(c, w)} · ${dt.mini(start)} · ${prog.have}/${prog.need} sessions`
+        class: 'ribbon__wk' + (isPE ? ' ribbon__wk--pe' : '') + (isRest ? ' ribbon__wk--rest' : '') +
+               (isNow ? ' ribbon__wk--now' : ''),
+        title: `Week ${w} · ${S.phaseOfWeek(c, w)} · ${dt.mini(start)} · ` +
+               (isRest ? 'nothing prescribed' : `${prog.have}/${prog.need} sessions`)
       }, [ bar, el('span', { class: 'ribbon__lbl', text: 'W' + w }) ]);
       wk._fill = fill;
       weeks.push(wk);
@@ -30,10 +37,51 @@
       el('div', { class: 'ribbon' }, weeks),
       el('div', { class: 'ribbon__legend' }, [
         el('span', {}, [ el('i', { style: 'background:var(--ink-4)' }), 'Base' ]),
-        el('span', {}, [ el('i', { style: 'background:#DCB08A' }), 'Power Endurance · final 3 weeks' ]),
+        el('span', {}, [ el('i', { style: 'background:#DCB08A' }), 'Power Endurance · four weeks' ]),
+        el('span', {}, [ el('i', { style: 'box-shadow:inset 0 0 0 1px var(--ink-4)' }), 'Rest week' ]),
         el('span', {}, [ el('i', { style: 'background:var(--spruce)' }), 'This week' ])
       ])
     ]);
+
+    /* How many week labels fit is a question about pixels, so it is
+       asked of the pixels. A block used to be twelve weeks at the
+       outside; now it is however many weeks fit in front of the peak,
+       and "W17" in a segment thirteen pixels wide is two labels wearing
+       each other. Thinned to every Nth, with the week they are actually
+       in never thinned away — and hidden by visibility rather than
+       display, so the bars above stay exactly where they were.
+
+       Measured off the box, not off scrollWidth: the label is an inline
+       span, and an inline box has no scroll width to report. */
+    function fitLabels() {
+      const lbls = weeks.map(w => w.querySelector('.ribbon__lbl'));
+      const cell = weeks.length ? weeks[0].getBoundingClientRect().width : 0;
+      if (!cell) return false;
+
+      lbls.forEach(l => { l.style.visibility = ''; });
+      const widest = lbls.reduce((n, l) => Math.max(n, l.getBoundingClientRect().width), 0);
+      if (widest <= cell - 2) return true;
+
+      const every = Math.max(2, Math.ceil((widest + 4) / cell));
+      const now = cur - 1;
+      let last = -Infinity;
+      weeks.forEach((w, i) => {
+        /* Kept if it is this week, or far enough from both the last
+           label kept and the next one that has to be. */
+        const due = i - last >= every && (i > now || now - i >= every);
+        if (i === now || due) { last = i; return; }
+        lbls[i].style.visibility = 'hidden';
+      });
+      return true;
+    }
+
+    /* The same wait the charts do. An element that hasn't been laid out
+       measures zero, and zero is not an answer to how much room there
+       is — the card is still animating in on the frame this first runs.
+       Then kept honest through a rotation, for the same reason. */
+    let tries = 0;
+    (function first() { if (fitLabels() || ++tries > 30) return; requestAnimationFrame(first); })();
+    if (window.ResizeObserver) new ResizeObserver(() => fitLabels()).observe(wrap);
 
     requestAnimationFrame(() => {
       weeks.forEach((w, i) => {
@@ -73,10 +121,13 @@
               el('p', { class: 'tiny', text: c.isSelf
                 ? 'Keep logging — it all still counts. Set up a new block when you know what it’s for.'
                 : 'Keep logging — it all still counts toward your loads and your history, until your coach sets up the next one.' }) ]
-          : [ el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember' : 'chip--spruce'), text: phase }),
-              el('p', { class: 'tiny', text: phase === 'Power Endurance'
-                ? 'Sharpening phase — hold strength, add intensity.'
-                : `Power Endurance opens in week ${c.block.peFromWeek}.` }) ])
+          : [ el('span', { class: 'chip ' + (phase === 'Power Endurance' ? 'chip--ember'
+                                             : phase === 'Rest' ? 'chip--clay' : 'chip--spruce'), text: phase }),
+              el('p', { class: 'tiny', text: phase === 'Rest'
+                ? `Nothing prescribed. Peaks ${dt.short(S.peakDate(c))} — arrive fresh.`
+                : phase === 'Power Endurance'
+                ? `Sharpening phase — hold strength, add intensity. Rest week ${S.restFromWeek(c)}, then ${dt.short(S.peakDate(c))}.`
+                : `Power Endurance opens in week ${S.peFromWeek(c)}.` }) ])
       ]),
       ribbon(c)
     ]);
@@ -96,7 +147,9 @@
         el('div', {}, [
           el('p', { style: 'font-size:14.5px;font-weight:550;letter-spacing:-.015em',
                     text: n === 0 ? 'No full weeks yet' : n === 1 ? '1 week on target' : `${n} weeks on target` }),
-          el('p', { class: 'tile__meta', text: wp.hit
+          el('p', { class: 'tile__meta', text: !wp.need
+            ? 'Rest week — it counts by being left alone.'
+            : wp.hit
             ? 'This week is already in the bag.'
             : `${wp.need - wp.have} more ${wp.need - wp.have === 1 ? 'session' : 'sessions'} ` +
               (n === 0 ? 'starts it off.' : 'keeps it going.') })
@@ -180,7 +233,9 @@
       b('endurance', 'Endurance', 'Routes, traversing, edge pulls…'),
       b('pe', 'Power Endurance', S.inPEPhase(c)
         ? '4×4s, wall crawls, repeaters'
-        : `4×4s, wall crawls, repeaters — outside the plan until week ${c.block.peFromWeek}`),
+        : S.isRestWeek(c, S.currentWeek(c))
+        ? '4×4s, wall crawls, repeaters — the rest week asks for none of it'
+        : `4×4s, wall crawls, repeaters — outside the plan until week ${S.peFromWeek(c)}`),
       b('climbing', 'Climbing', 'A session on the wall or at the crag')
     ];
 

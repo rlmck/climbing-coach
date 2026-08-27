@@ -73,7 +73,7 @@
     const rows = [
       dayRow('strength',  'Strength',        'Max hangs. Two rest days between if you run more than one.'),
       dayRow('endurance', 'Endurance',       'The volume that carries the block.'),
-      dayRow('pe',        'Power Endurance', 'Only scheduled in the final three weeks.')
+      dayRow('pe',        'Power Endurance', 'Only scheduled in the four weeks before the rest week.')
     ];
 
     function field(label, control, hint) {
@@ -95,9 +95,14 @@
     const bwInput = el('input', { class: 'input', type: 'number', step: 0.1, min: 20, max: 200,
       placeholder: '00.0', oninput: e => { form.bodyweight = e.target.value; sync(); } });
     const startInput = el('input', { class: 'input', type: 'date', value: form.start,
-      oninput: e => { form.start = e.target.value || CT.nextMonday(); sync(); } });
+      oninput: e => { form.start = e.target.value ? dt.nearestMonday(e.target.value) : CT.nextMonday(); sync(); } });
+    /* Four and six are gone. Five of a block's weeks are spoken for —
+       four of power endurance and the rest week in front of the peak —
+       so anything shorter than eight is a taper with no block behind
+       it. The date it peaks on is said out loud underneath, because
+       that is the number the coach was actually working back from. */
     const weeksInput = el('select', { class: 'input', onchange: e => { form.weeks = +e.target.value; sync(); } },
-      [4, 6, 8, 10, 12].map(w => el('option', { value: w, text: w + ' weeks', selected: w === form.weeks || null })));
+      [8, 10, 12].map(w => el('option', { value: w, text: w + ' weeks', selected: w === form.weeks || null })));
     const noteInput = el('textarea', { class: 'input', placeholder: 'Anything they should read on day one.',
       oninput: e => form.note = e.target.value });
 
@@ -111,8 +116,11 @@
       picker.sync();
 
       const t = form.template;
-      const peFrom = form.weeks - 2;
-      phaseNote.textContent = `Base phase for weeks 1 to ${peFrom - 1}. Power Endurance opens in week ${peFrom} and runs to the end.`;
+      const peFrom = CT.BLOCK.peFromWeek(form.weeks), rest = CT.BLOCK.deloadFromWeek(form.weeks);
+      const peak = dt.addISO(form.start, form.weeks * 7);
+      phaseNote.textContent = `Base phase for weeks 1 to ${peFrom - 1}. Power Endurance for weeks ` +
+        `${peFrom} to ${rest - 1}. Week ${rest} prescribes nothing — it is the rest week, and the block ` +
+        `peaks on ${dt.short(peak)}. That date can be moved later on the Clients screen.`;
 
       /* Bodyweight used to be optional. It isn't any more: the working
          load is a share of bodyweight plus added weight, and without the
@@ -127,7 +135,8 @@
                            : 'A bodyweight and a max hang, so the loads can be worked out')
         : !t.strength.length ? 'Pick at least one strength day'
         : !t.endurance.length ? 'Pick at least one endurance day'
-        : `${form.weeks} weeks from ${dt.short(form.start)} · ${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
+        : `${form.weeks} weeks from ${dt.short(form.start)}, peaking ${dt.mini(dt.addISO(form.start, form.weeks * 7))} · ` +
+          `${base} sessions a week, ${base + t.pe.length} once Power Endurance opens`;
     }
 
     async function create() {

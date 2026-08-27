@@ -20,6 +20,11 @@
     add(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; },
     addISO(s, n) { return dt.iso(dt.add(dt.parse(s), n)); },
     monday(d) { const x = new Date(d); const g = (x.getDay()+6)%7; x.setDate(x.getDate()-g); x.setHours(0,0,0,0); return x; },
+    /* The Monday nearest a date. A block runs Monday to Sunday, so the
+       day it is aimed at has to be one — and a peak typed as the Sunday
+       of a weekend means that weekend, not the Monday six days behind
+       it, which is what snapping backwards would quietly do. */
+    nearestMonday(s) { const g = (dt.parse(s).getDay() + 6) % 7; return dt.addISO(s, g <= 3 ? -g : 7 - g); },
     diff(a, b) { return Math.round((dt.parse(a) - dt.parse(b)) / DAY); },
     dow(s) { return DOW[dt.parse(s).getDay()]; },
     /* "Tue 28 Jul" */
@@ -54,10 +59,10 @@
   CT.TYPE = {
     strength:  { id:'strength',  label:'Strength',        short:'Strength', detail:'Max hangs or limit boulders', dot:'s' },
     endurance: { id:'endurance', label:'Endurance',       short:'Endurance', detail:'Aerobic capacity', dot:'e' },
-    /* The final three weeks are where a block *plans* power endurance.
-       They are not a gate on logging it: an athlete who did 4×4s in
-       week two did them, and a log that won't take the session is a
-       log that disagrees with the training. */
+    /* The four weeks before the rest week are where a block *plans*
+       power endurance. They are not a gate on logging it: an athlete
+       who did 4×4s in week two did them, and a log that won't take the
+       session is a log that disagrees with the training. */
     pe:        { id:'pe',        label:'Power Endurance', short:'Power Endurance', detail:'Anaerobic capacity', dot:'p' },
     /* Climbing, as opposed to training. The block doesn't prescribe it
        and no weekly target counts it — see S.weekProgress, which asks
@@ -66,6 +71,39 @@
        what the fingers did that week, and a record that only holds the
        prescribed work is a record that can't explain a tired Monday. */
     climbing:  { id:'climbing',  label:'Climbing',        short:'Climbing', detail:'Routes or boulders', dot:'c' }
+  };
+
+  /* ── the shape of a block ──────────────────────────────
+     A block is built backwards from the Monday it is for. Power
+     endurance occupies the four weeks before that, and the week
+     immediately in front of it is a rest week — no prescribed sessions
+     at all, so the fingers arrive at the peak having been left alone.
+
+     None of this is stored. `weeks` is, and every line below is a
+     function of it, so a block whose length changes can never end up
+     with a phase that disagrees with its own dates. It used to be
+     stored, as `block.peFromWeek`, and a stored one is exactly the
+     number that goes stale the moment an end date moves. */
+  CT.BLOCK = {
+    peWeeks: 4,
+    deloadWeeks: 1,
+    /* Eight is the floor because five weeks are already spoken for.
+       Anything shorter is a taper with no block behind it. */
+    minWeeks: 8,
+    maxWeeks: 26,
+    /* The first week of the power-endurance phase, and the first week
+       of the rest that follows it. Clamped at 1 for blocks built when
+       the phase was three weeks long and four-week blocks were allowed:
+       those re-read as all taper, rather than as a phase that starts in
+       week zero. */
+    peFromWeek(weeks) { return Math.max(1, weeks - CT.BLOCK.peWeeks - CT.BLOCK.deloadWeeks + 1); },
+    deloadFromWeek(weeks) { return Math.max(1, weeks - CT.BLOCK.deloadWeeks + 1); },
+    /* Length from the two dates a coach actually thinks in: the Monday
+       the block opens and the Monday it is for. The peak is the day
+       after the block ends, never a day inside it. */
+    weeksTo(startISO, peakISO) { return Math.round(dt.diff(peakISO, startISO) / 7); },
+    endBefore(peakISO) { return dt.addISO(peakISO, -1); },
+    peakAfter(endISO) { return dt.addISO(endISO, 1); }
   };
 
   CT.GRIPS = [
@@ -558,17 +596,21 @@
   let seq = 0;
   const uid = p => p + '_' + (++seq);
 
-  /* one suggested slot per prescribed session, for every week of the block */
-  function buildSlots(blockStart, weeks, template, peFromWeek) {
+  /* one suggested slot per prescribed session, for every week of the
+     block that prescribes any. The rest week prescribes nothing, and
+     says so by being empty — an empty week is a plan, not a gap. */
+  function buildSlots(blockStart, weeks, template) {
+    const peFrom = CT.BLOCK.peFromWeek(weeks), restFrom = CT.BLOCK.deloadFromWeek(weeks);
     const slots = [];
     for (let w = 1; w <= weeks; w++) {
+      if (w >= restFrom) continue;
       const wkStart = dt.addISO(blockStart, (w - 1) * 7);
       const add = (type, offsets) => (offsets || []).forEach(o =>
         slots.push({ id: uid('slot'), week: w, type, date: dt.addISO(wkStart, o), status: 'suggested', sessionId: null })
       );
       add('strength',  template.strength);
       add('endurance', template.endurance);
-      if (w >= peFromWeek) add('pe', template.pe);
+      if (w >= peFrom) add('pe', template.pe);
     }
     /* A template can put two sessions on one day, and which comes first
        is something the athlete rearranges later — so the plan says which
@@ -666,9 +708,8 @@
     const rand = rng(cfg.seed);
     const blockStart = dt.iso(dt.add(thisMonday, -7 * (cfg.currentWeek - 1)));
     const blockEnd   = dt.addISO(blockStart, cfg.weeks * 7 - 1);
-    const peFromWeek = cfg.weeks - 2;               // final 3 weeks
 
-    const slots = buildSlots(blockStart, cfg.weeks, cfg.template, peFromWeek);
+    const slots = buildSlots(blockStart, cfg.weeks, cfg.template);
 
     /* ── adherence is authored, not rolled: each week is 'full',
          'partial' (one endurance dropped) or 'poor' (strength plus
@@ -842,7 +883,7 @@
 
     return {
       id: cfg.id, name: cfg.name, full: cfg.full, initials: cfg.initials, role: 'client',
-      block: { start: blockStart, end: blockEnd, weeks: cfg.weeks, peFromWeek },
+      block: { start: blockStart, end: blockEnd, weeks: cfg.weeks },
       targets: Object.assign({ strength:1, endurance:3, pe:1 }, cfg.targets),
       template: cfg.template,
       startLoads: { tfd: cfg.start.tfd, half: cfg.start.half },
@@ -875,7 +916,6 @@
 
   CT.createClient = function (input) {
     const weeks = input.weeks;
-    const peFromWeek = weeks - 2;
     const blockStart = input.start;
     const template = input.template;
 
@@ -888,7 +928,7 @@
       full: input.name.trim(),
       initials: initialsOf(input.name),
       role: 'client',
-      block: { start: blockStart, end: dt.addISO(blockStart, weeks * 7 - 1), weeks, peFromWeek },
+      block: { start: blockStart, end: dt.addISO(blockStart, weeks * 7 - 1), weeks },
       targets: {
         strength:  template.strength.length,
         endurance: template.endurance.length,
@@ -905,7 +945,7 @@
       refBodyweight: input.bodyweight || null,
       workingPct: input.workingPct || CT.PROTOCOL.workingPct,
       cleanStreak: { tfd: 0, half: 0 },
-      slots: buildSlots(blockStart, weeks, template, peFromWeek),
+      slots: buildSlots(blockStart, weeks, template),
       sessions: [],
       bodyweight: input.bodyweight ? [{ date: dt.iso(today), kg: input.bodyweight }] : [],
       /* The max the block was built on is a test result like any other,
@@ -931,13 +971,14 @@
   if (CT.CONFIG && CT.CONFIG.live) return;
 
   Object.assign(CT.world.clients, {
-      /* Maks — final week of an 8-week block, deep in power endurance.
+      /* Maks — last prescribed week of a 9-week block, deep in power
+         endurance, with the rest week and the peak in front of him.
          Authored so the strength log opens one clean session away from
          +2.5 kg on the drag and freshly reset on the half-crimp, and so
          finishing this week lands a 4-week streak. */
       maks: makeClient({
         id:'maks', name:'Maks', full:'Maks Nowicki', initials:'MN', seed: 20260401,
-        weeks: 8, currentWeek: 8,
+        weeks: 9, currentWeek: 8,
         template: { strength:[0], endurance:[1,3,5], pe:[4] },
         adherence: ['full','full','partial','poor','full','full','full','current'],
         currentOpen: 'endurance',
@@ -955,7 +996,7 @@
            left, and the left's critical force read partly off a rep the
            device flagged, which is what that test actually looked like. */
         cf: { right: 23.3, left: 17.0, gain: 1.6, latestFlag: { left: [23] } },
-        coachNote: 'Last week of the block. Hold the load — no chasing numbers now.'
+        coachNote: 'Last week of real work, then rest. Hold the load — no chasing numbers now.'
       }),
       /* Jade — week 2 of 8, base phase, no PE sessions scheduled yet.
          Both grips sit at 1 of 2 clean sessions. Her week runs four

@@ -45,7 +45,7 @@ Bottom-left of the sidebar. Three mock people, no auth:
 | | | |
 |---|---|---|
 | **Coach** | Coach | Roster, onboarding, per-client weekly targets, and any athlete's screens — including logging on their behalf |
-| **Maks** | Client | Week 8 of 8, power-endurance phase, one session short of a 4-week streak |
+| **Maks** | Client | Week 8 of 9, last power-endurance week, one session short of a 4-week streak — the rest week and the peak in front of him |
 | **Jade** | Client | Week 2 of 8, base phase — no power-endurance sessions scheduled yet |
 
 Against a real backend the switcher is a coach's tool only. An athlete is
@@ -131,6 +131,64 @@ today. Pick a past date and a banner appears saying which day you're
 logging and how long ago it was. Maks's dashboard has a missed session
 with a "Log it late" button.
 
+**The shape of a block.** A block is built backwards from the day it is
+for. The last five weeks are spoken for before anything else is decided:
+four weeks of **Power Endurance**, and then a **rest week** with nothing
+prescribed in it at all. Everything in front of that is **Base**. So an
+athlete peaking on Monday 2 November starts anaerobic work on Monday 28
+September — five weeks out — trains through to Sunday 25 October, rests
+the week of the 26th, and arrives on the 2nd having been left alone for
+seven days.
+
+The rest week is prescribed by being empty. No slots are generated for
+it, its weekly target is nothing, and it therefore counts as met — a
+streak carries through it rather than breaking on it. The Plan screen
+says so in as many words, because an empty week inside a block otherwise
+looks exactly like an empty week outside one, and the difference is the
+whole point. Logging still works: an athlete who goes climbing in their
+rest week went climbing, and it lands on the record like anything else.
+
+A block built before any of this has sessions planned right through its
+final week, and they stay there — old plans are migrated on read, never
+rewritten out from under the athlete. That week reads as the rest week,
+nothing counts those sessions any more, and the Plan screen says which
+of the two situations it is rather than insisting on the tidy one. Moving
+the peak, or removing them by hand, clears it.
+
+**Peaks on** — on the Clients screen, beside the weekly targets, for
+every athlete and for the coach's own record. It holds the Monday the
+block is aimed at, which is the day *after* the block's last day; the
+length falls out of it. Mondays only, because a block runs Monday to
+Sunday and a peak mid-week would leave the phases straddling two of
+them — anything else typed snaps to the nearest Monday, visibly, in the
+box. Eight weeks is the shortest and twenty-six the longest.
+
+The dashboard's week ribbon draws the rest week hollow and outlined
+rather than filled, because a full bar on a week with nothing in it reads
+as a week completed. It also thins its own labels: a block can now run to
+twenty-six segments, and "W17" in a thirteen-pixel segment is two labels
+wearing each other, so it measures them and keeps every Nth — never the
+one you're standing in.
+
+Moving it re-fits the plan the way changing a weekly target does: only
+unlogged sessions from the current week onwards move, so history stays
+put and a week somebody has already dragged into shape keeps that shape.
+Weeks the block has grown into are laid out from the athlete's own
+template — the days their coach picked, not wherever there was room.
+Weeks that fall off the far end lose their suggestions and keep their
+sessions. Nothing logged is ever unlogged by a date moving.
+
+**Which week is which phase is never stored.** It is derived from the
+length, every time it is asked, which is what makes the end date safe to
+move at all — there is no second copy of the answer to go stale against
+the dates. Athletes onboarded before this carry a `block.peFromWeek`
+written next to their dates; it is dropped on read, like every other
+migration, and nothing reads it. One consequence worth naming: pushing a
+peak back re-reads which of the *past* weeks were power endurance, so a
+4×4 logged in what is now a base week stops filling that week's target.
+It stays on the record, on the charts and in the history — it is the
+target that moved, not the session.
+
 **A block is a plan, not a fence.** The date control used to refuse
 anything before the block opened, which made the log a record of the plan
 rather than of the training. It now refuses only the future — the floor
@@ -143,7 +201,7 @@ and the date bar says so when you pick such a day.
 
 **The phase is the same kind of plan, and it has stopped being a fence
 too.** Power Endurance used to be withheld from every picker until the
-block reached its final three weeks — the type chooser dropped it, the
+block reached its power-endurance weeks — the type chooser dropped it, the
 dashboard dropped its card, the rail dropped its button. An athlete who
 did 4×4s in week two had done them, and the app's answer was that they
 couldn't have. Now all three kinds are always on offer, out of phase
@@ -206,11 +264,17 @@ only ever touches the placeholder — a session with something logged
 against it is deleted from its own log screen, which puts the loads back.
 
 **Streak** — completing the current week's targets extends it. Maks is on
-3; finishing week 8 lands 4, which is a milestone.
+3; finishing week 8 lands 4, which is a milestone. The rest week asks for
+nothing, so it is met by doing nothing and a streak carries straight
+through it.
 
 **Onboarding** — as Ross, "Onboard a client" on the Clients screen. Name,
-bodyweight, block dates and length, max hang per grip, the share of it
-they'll train at, and the days they train.
+bodyweight, block start and length, max hang per grip, the share of it
+they'll train at, and the days they train. Eight, ten or twelve weeks —
+four is gone, because five weeks of any block are already spoken for (see
+**The shape of a block** above) and a shorter one is a taper with nothing
+behind it. The date it peaks on is worked out and shown as you pick, and
+can be changed afterwards.
 The days you pick *are* the weekly target — one suggested slot per
 prescribed session — so the plan and the target can't drift apart. The
 new athlete appears in the roster and the user switcher immediately, with

@@ -126,9 +126,35 @@
     },
     inBlock(c, w) { return w >= 1 && w <= c.block.weeks; },
     currentWeek(c) { return S.weekOf(c, dt.iso(dt.today())); },
-    phaseOfWeek(c, w) { return w >= c.block.peFromWeek ? 'Power Endurance' : 'Base'; },
+
+    /* Where the phases sit, asked of the length rather than of a stored
+       number. `block.peFromWeek` used to be written alongside the dates
+       and is still on every athlete onboarded before this — it is not
+       read anywhere, because the moment an end date moves it is wrong.
+       See CT.BLOCK for the shape it is derived from. */
+    peFromWeek(c) { return CT.BLOCK.peFromWeek(c.block.weeks); },
+    restFromWeek(c) { return CT.BLOCK.deloadFromWeek(c.block.weeks); },
+    isRestWeek(c, w) { return w >= S.restFromWeek(c) && w <= c.block.weeks; },
+    /* The Monday the block is aimed at — the day after it ends, never a
+       day inside it. */
+    peakDate(c) { return CT.BLOCK.peakAfter(c.block.end); },
+
+    phaseOfWeek(c, w) {
+      if (S.isRestWeek(c, w)) return 'Rest';
+      return w >= S.peFromWeek(c) ? 'Power Endurance' : 'Base';
+    },
     phase(c) { return S.phaseOfWeek(c, S.currentWeek(c)); },
     inPEPhase(c) { return S.phase(c) === 'Power Endurance'; },
+
+    /* What the plan asks for in a given week, by type. One question with
+       one answer, because three screens and the target editor were each
+       working it out from `peFromWeek` on their own and the rest week
+       would have had to be added to all four. */
+    prescribed(c, w, type) {
+      if (S.isRestWeek(c, w)) return 0;
+      if (type === 'pe' && w < S.peFromWeek(c)) return 0;
+      return c.targets[type] || 0;
+    },
     weekStart(c, w) { return dt.addISO(c.block.start, (w - 1) * 7); },
 
     /* ── slots / sessions ────────────────────────────────── */
@@ -202,9 +228,13 @@
     /* ── weekly target progress ──────────────────────────── */
     weekProgress(c, w) {
       const slots = S.slotsInWeek(c, w);
-      const t = c.targets, pe = w >= c.block.peFromWeek;
       const count = type => slots.filter(s => s.type === type && S.slotStatus(c,s) === 'completed').length;
-      const req = { strength: t.strength, endurance: t.endurance, pe: pe ? t.pe : 0 };
+      /* The rest week asks for nothing, so it needs nothing: `need` is
+         0, `hit` is true, and a streak carries through it. Resting when
+         the plan says rest is the week being done, not skipped. */
+      const req = { strength: S.prescribed(c, w, 'strength'),
+                    endurance: S.prescribed(c, w, 'endurance'),
+                    pe: S.prescribed(c, w, 'pe') };
       const got = { strength: count('strength'), endurance: count('endurance'), pe: count('pe') };
       const need = req.strength + req.endurance + req.pe;
       const have = Math.min(got.strength, req.strength) + Math.min(got.endurance, req.endurance) + Math.min(got.pe, req.pe);
@@ -571,18 +601,88 @@
       c.targets[key] = n;
 
       for (let w = S.currentWeek(c); w <= c.block.weeks; w++) {
-        if (key === 'pe' && w < c.block.peFromWeek) continue;
-        let diff = n - c.slots.filter(s => s.week === w && s.type === key).length;
-        while (diff > 0) { S._addSlot(c, w, key); diff--; }
-        while (diff < 0) {
-          const spare = c.slots.filter(s => s.week === w && s.type === key && !s.sessionId).pop();
-          if (!spare) break;
-          c.slots.splice(c.slots.indexOf(spare), 1);
-          CT.repo.deleteSlot(c, spare.id);
-          diff++;
-        }
+        S._fitWeek(c, w, key);
       }
       CT.repo.saveAthlete(c, { targets: c.targets });
+    },
+
+    /* Make one week hold what the plan asks of it for one type, without
+       touching anything logged. Adding and removing are the same job
+       from opposite ends, and both a target change and a change of end
+       date need it. */
+    _fitWeek(c, w, key) {
+      let diff = S.prescribed(c, w, key) - c.slots.filter(s => s.week === w && s.type === key).length;
+      while (diff > 0) { if (!S._addSlot(c, w, key)) break; diff--; }
+      while (diff < 0) {
+        const spare = c.slots.filter(s => s.week === w && s.type === key && !s.sessionId).pop();
+        if (!spare) break;
+        c.slots.splice(c.slots.indexOf(spare), 1);
+        CT.repo.deleteSlot(c, spare.id);
+        diff++;
+      }
+    },
+
+    /* ── moving the peak ─────────────────────────────────────
+       A coach knows the date before they know the length: the trip, the
+       comp, the weekend the conditions come good. So the block is set by
+       saying which Monday it is for, and the length falls out of that.
+
+       Everything downstream follows — the phase is derived from the
+       length, so pulling the peak two weeks in re-reads which weeks are
+       power endurance and which is the rest, and the plan is re-fitted
+       to match. Only unlogged slots from the current week on move, the
+       same rule a target change follows: history is history, and a week
+       somebody has already dragged into shape stays that shape.
+
+       Weeks that fall off the far end lose their suggestions and keep
+       their sessions. A block is a plan, not a fence — nothing logged is
+       ever unlogged by a date moving. */
+    setPeak(c, peakISO) {
+      const weeks = CT.BLOCK.weeksTo(c.block.start, peakISO);
+      if (!(weeks >= CT.BLOCK.minWeeks && weeks <= CT.BLOCK.maxWeeks)) return null;
+      if (dt.diff(peakISO, c.block.start) % 7 !== 0) return null;   // must be a Monday of the block
+      if (weeks === c.block.weeks) return null;
+
+      const was = c.block.weeks;
+      c.block.weeks = weeks;
+      c.block.end = CT.BLOCK.endBefore(peakISO);
+      /* No longer derived from, and no longer written — but an old
+         record still carries it, and a stale number sitting next to the
+         dates it disagrees with is worth clearing on the way past. */
+      delete c.block.peFromWeek;
+
+      /* Every week that could have changed shape: the ones still in the
+         block from here on, plus the ones that just left it. */
+      const last = Math.max(was, weeks);
+      for (let w = S.currentWeek(c); w <= last; w++) {
+        if (w > weeks) {
+          c.slots.filter(s => s.week === w && !s.sessionId).forEach(spare => {
+            c.slots.splice(c.slots.indexOf(spare), 1);
+            CT.repo.deleteSlot(c, spare.id);
+          });
+          continue;
+        }
+        /* A week the block has only just grown into has nothing in it,
+           so it is laid out from the template — the days the coach
+           picked, not wherever the spreader happens to find room. */
+        if (!S.isRestWeek(c, w) && !c.slots.some(s => s.week === w)) S._templateWeek(c, w);
+        ['strength', 'endurance', 'pe'].forEach(key => S._fitWeek(c, w, key));
+      }
+
+      CT.repo.saveAthlete(c, { block: c.block });
+      return weeks;
+    },
+
+    /* A week laid out the way onboarding lays one out: the template's
+       day offsets, in the template's order. */
+    _templateWeek(c, w) {
+      const t = c.template || {};
+      const wkStart = S.weekStart(c, w);
+      ['strength', 'endurance', 'pe'].forEach(key => {
+        if (!S.prescribed(c, w, key)) return;
+        (t[key] || []).slice(0, S.prescribed(c, w, key))
+          .forEach(o => S.addPlannedSlot(c, dt.addISO(wkStart, o), key));
+      });
     },
 
     /* Spread across the week: the emptiest day takes it, earliest breaks a

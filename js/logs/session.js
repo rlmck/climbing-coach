@@ -489,7 +489,7 @@
     const date = opts.date || dt.iso(dt.today());
     /* By the week the session happened in, not the week the athlete is
        in today — a backdated log belongs to the day it was climbed. */
-    const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
+    const peOpen = S.weekIndex(c, date) >= S.peFromWeek(c);
     const kinds = [
       ['strength',  'Strength',        'Hangboard max hangs, or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, intervals'],
@@ -514,8 +514,8 @@
       peOpen
         ? null
         : el('p', { class: 'tiny', text:
-            `The plan holds Power Endurance back until week ${c.block.peFromWeek}, the final three of the ` +
-            `block. Log one anyway if that is what was climbed — it goes on the record and into the ` +
+            `The plan holds Power Endurance back until week ${S.peFromWeek(c)}, the four before the rest ` +
+            `week. Log one anyway if that is what was climbed — it goes on the record and into the ` +
             `history like any other session, it just isn’t filling a target this week.` })
     ]);
 
@@ -554,7 +554,7 @@
     }
     /* The true week, not the week clamped into the plan: a day past the
        end of the block is outside it, not in its final week. */
-    const peOpen = S.weekIndex(c, date) >= c.block.peFromWeek;
+    const peOpen = S.weekIndex(c, date) >= S.peFromWeek(c);
     const kinds = [
       ['strength',  'Strength',        'Max hangs or limit bouldering'],
       ['endurance', 'Endurance',       'Routes, traversing, edge pulls, intervals'],
@@ -590,7 +590,7 @@
       el('p', { class: 'tiny', text: peOpen
         ? `It joins ${S.whose(c)} plan as a suggested session — drag it to another day any time.`
         : `It joins ${S.whose(c)} plan as a suggested session. Power Endurance isn’t scheduled until ` +
-          `week ${c.block.peFromWeek}, so one placed here is an addition to the block rather than part of it.` }),
+          `week ${S.peFromWeek(c)}, so one placed here is an addition to the block rather than part of it.` }),
       /* Said once, here, because a planned climbing day looks exactly
          like a planned session and is not one: nothing counts it, and
          nothing goes wrong if it doesn't happen. */
@@ -620,10 +620,12 @@
     const future = slot.date > todayISO;
     const missed = S.slotStatus(c, slot) === 'missed';
 
-    /* How thin the week gets if this one goes. Zero for a type the block
-       never asks for — Climbing has no target and a week of it can't be
-       thin, so there is nothing here to warn anybody about. */
-    const asks = slot.type === 'pe' && slot.week < c.block.peFromWeek ? 0 : (c.targets[slot.type] || 0);
+    /* How thin the week gets if this one goes. Zero for a type the week
+       never asks for — Climbing has no target anywhere, Power Endurance
+       has none before its phase opens, and the rest week asks for
+       nothing at all, so in none of those cases is there anything here
+       to warn anybody about. */
+    const asks = S.prescribed(c, slot.week, slot.type);
     const planned = c.slots.filter(s => s.week === slot.week && s.type === slot.type).length;
 
     const cell = (label, value) => el('div', {}, [ el('dt', { text: label }), el('dd', { text: value }) ]);
@@ -981,10 +983,10 @@
     function phaseSub() {
       if (type === 'climbing') return 'Climbing you did — on the record, not against a target';
       if (type !== 'pe') return 'Aerobic capacity — the volume that carries the block';
-      return S.weekIndex(c, dateBar.get()) < c.block.peFromWeek
-        ? `Anaerobic work — the plan schedules it from week ${c.block.peFromWeek}, but a session done ` +
+      return S.weekIndex(c, dateBar.get()) < S.peFromWeek(c)
+        ? `Anaerobic work — the plan schedules it from week ${S.peFromWeek(c)}, but a session done ` +
           `earlier still counts toward the history`
-        : 'Anaerobic work — scheduled in the final three weeks of the block';
+        : 'Anaerobic work — scheduled in the four weeks before the rest week';
     }
     function syncPhase() {
       const n = sheet && CT.ui.$('.sheet__sub', sheet);

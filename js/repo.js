@@ -103,7 +103,14 @@
       id: athleteId,
       name: d.name, full: d.full, initials: d.initials,
       role: 'client',
-      block: d.block,
+      /* Blocks written before the phases were derived carry a
+         `peFromWeek` alongside their dates. Nothing reads it — the
+         phase comes from the length now — but it is dropped here so it
+         can never be picked up by mistake, and dropped on read rather
+         than rewritten, like every other migration in this file. */
+      block: d.block && 'peFromWeek' in d.block
+        ? (function (b) { const o = Object.assign({}, b); delete o.peFromWeek; return o; })(d.block)
+        : d.block,
       targets: d.targets,
       template: d.template,
       startLoads: d.startLoads,

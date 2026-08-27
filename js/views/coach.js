@@ -71,7 +71,8 @@
         el('div', {}, [
           el('h3', { class: 'h-card', text: 'Your own training' }),
           el('p', { class: 'sub', style: 'margin-top:2px',
-            text: `Week ${week} of ${mine.block.weeks} · ${S.phase(mine)} · ${wp.have} of ${wp.need} this week` })
+            text: `Week ${week} of ${mine.block.weeks} · ${S.phase(mine)} · ` +
+                  (wp.need ? `${wp.have} of ${wp.need} this week` : 'nothing prescribed this week') })
         ]),
         el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'Open my training',
           onclick: () => { S.setViewing(mine.id); CT.go('dashboard'); } })
@@ -159,7 +160,7 @@
       el('span', { class: 'client__av', text: c.initials }),
       el('div', {}, [
         el('p', { class: 'client__name', text: c.full }),
-        el('p', { class: 'client__sub', text: `Week ${week} of ${c.block.weeks} · ${phase} · ends ${dt.mini(c.block.end)}` })
+        el('p', { class: 'client__sub', text: `Week ${week} of ${c.block.weeks} · ${phase} · peaks ${dt.mini(S.peakDate(c))}` })
       ]),
       el('dl', { class: 'kv' }, [
         el('dt', { text: 'This week' }),
@@ -227,7 +228,7 @@
     const rows = [
       ['strength',  'Strength',        'Max hangs — one per week is the floor'],
       ['endurance', 'Endurance',       'Aerobic volume across the week'],
-      ['pe',        'Power Endurance', 'Only scheduled in the final 3 weeks']
+      ['pe',        'Power Endurance', 'Only scheduled in the four weeks before the rest']
     ];
 
     const body = el('div', { class: 'card__bd' }, rows.map(([key, name, desc]) => {
@@ -258,6 +259,12 @@
 
     const summary = el('p', { class: 'tiny', text: summaryText(c) });
 
+    /* The date the whole block is aimed at, and the only handle on its
+       length. It sits with the weekly targets because it is the same
+       question at a different scale: what the week asks for, and how
+       many weeks are left to ask it in. */
+    const peakRow = peakControl(c, () => { summary.textContent = summaryText(c); });
+
     /* The hangboard's prescribed load, and the max it is a share of.
        Kept next to the weekly targets because it is the other half of
        the same question: what the week asks for, and how heavy. */
@@ -273,14 +280,87 @@
         el('button', { class: 'card__act btn btn--ghost btn--sm', text: 'View schedule',
           onclick: () => { S.setViewing(c.id); CT.go('schedule'); } })
       ]),
-      body, el('div', { class: 'card__bd', style: 'padding-top:0' }, [ loadsRow ]),
+      body, el('div', { class: 'card__bd', style: 'padding-top:0' }, [ peakRow, loadsRow ]),
       el('div', { style: 'padding:13px 20px;border-top:1px solid var(--line);background:var(--surface-2)' }, [ summary ])
+    ]);
+  }
+
+  /* ── the day the block is for ────────────────────────────
+     A coach picks the date first — the trip, the comp, the weekend the
+     conditions come good — and the length of the block is whatever fits
+     in front of it. So this asks for the peak and lets `weeks` fall out,
+     rather than asking for a number of weeks and making somebody count
+     backwards on a calendar.
+
+     Mondays only, because a block runs Monday to Sunday and a peak
+     mid-week would leave the phases straddling two of them. Anything
+     else typed snaps to the nearest one, visibly, in the box — a date
+     silently corrected by three days is a date nobody trusts again. */
+  function peakControl(c, onChange) {
+    const min = dt.addISO(c.block.start, CT.BLOCK.minWeeks * 7);
+    const max = dt.addISO(c.block.start, CT.BLOCK.maxWeeks * 7);
+    const desc = el('p', { class: 'target__d' });
+
+    const input = el('input', {
+      class: 'input', type: 'date', min, max, value: S.peakDate(c),
+      style: 'width:auto;margin-left:auto;flex:none',
+      'aria-label': (c.isSelf ? 'Your' : c.name + '’s') + ' peak date',
+      onchange: e => commit(e.target.value)
+    });
+
+    function say() {
+      const peak = S.peakDate(c);
+      desc.textContent = `${dt.short(peak)} · ${c.block.weeks} weeks · Power Endurance from week ` +
+        `${S.peFromWeek(c)}, week ${S.restFromWeek(c)} rest`;
+      input.value = peak;
+    }
+    say();
+
+    function commit(raw) {
+      if (!raw) { say(); return; }
+      /* Snapped to a Monday, then held inside the range a block can be.
+         The box is rewritten with the answer either way, so a date that
+         was moved is a date you can see was moved. */
+      let want = dt.nearestMonday(raw);
+      if (want < min) want = min;
+      if (want > max) want = max;
+      const moved = want !== raw;
+
+      const was = c.block.weeks;
+      const weeks = S.setPeak(c, want);
+
+      /* Nothing to say when nothing changed — unless what was typed was
+         moved to get there, in which case silence looks like the box
+         ignoring you. */
+      if (weeks == null) {
+        say();
+        if (moved) toast('Left where it was', `A block runs ${CT.BLOCK.minWeeks} to ${CT.BLOCK.maxWeeks} ` +
+          `weeks from ${dt.short(c.block.start)}, and peaks on a Monday. ${dt.short(want)} is where it ` +
+          `already peaks.`);
+        return;
+      }
+
+      say();
+      onChange();
+      CT.render(false);
+      toast(`${c.isSelf ? 'Your block' : c.name + '’s block'} peaks ${dt.short(want)}`,
+        `${weeks} weeks, ${weeks > was ? 'longer' : 'shorter'} than before${moved ? ' — Mondays only' : ''}. ` +
+        `Power Endurance now runs weeks ${S.peFromWeek(c)} to ${S.restFromWeek(c) - 1}, then week ` +
+        `${S.restFromWeek(c)} is rest. Logged sessions stay exactly where they are.`);
+    }
+
+    return el('div', { class: 'target' }, [
+      el('span', { class: 'quick__dot quick__dot--p' }),
+      el('div', {}, [ el('p', { class: 'target__n', text: 'Peaks on' }), desc ]),
+      input
     ]);
   }
 
   function summaryText(c) {
     const t = c.targets;
     const total = t.strength + t.endurance;
-    return `A complete week is ${total} sessions in the base phase, ${total + t.pe} once Power Endurance opens in week ${c.block.peFromWeek}.`;
+    return `A complete week is ${total} sessions in the base phase, ${total + t.pe} once Power Endurance opens ` +
+           `in week ${S.peFromWeek(c)}. Week ${S.restFromWeek(c)} prescribes nothing at all — it is the rest ` +
+           `week before ${dt.short(S.peakDate(c))}.`;
   }
 })();
