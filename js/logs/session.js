@@ -552,6 +552,27 @@
       toast('Nothing to plan against', 'There’s no block on this record yet.');
       return;
     }
+    /* Nothing is planned into the rest week. Said here, at the door,
+       rather than behind a tap: a picker that refuses all four choices
+       is a worse answer than the sentence explaining why. Logging is
+       untouched — whatever actually happens that week still goes on the
+       record, and lands on this calendar when it does. */
+    if (S.restWeekHolds(c, date)) {
+      CT.sheet.open({
+        eyebrow: 'Rest week',
+        title: dt.short(date) + ' is in the rest week',
+        sub: `The last week before ${dt.short(S.peakDate(c))}`,
+        body: el('div', { class: 'sheet__bd' }, [
+          el('p', { class: 'tiny', text:
+            `This week prescribes nothing at all — that is what it is for, and a session planned into it ` +
+            `would be working against the block rather than finishing it. Nothing is stopping the day ` +
+            `itself: if ${S.forOther(c) ? c.name + ' climbs' : 'you climb'}, log it and it lands here like ` +
+            `any other session. Moving the peak on the Clients screen moves which week this is.` })
+        ])
+      });
+      return;
+    }
+
     /* The true week, not the week clamped into the plan: a day past the
        end of the block is outside it, not in its final week. */
     const peOpen = S.weekIndex(c, date) >= S.peFromWeek(c);

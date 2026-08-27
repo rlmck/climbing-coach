@@ -101,6 +101,11 @@
       toast('That day is full', `${dt.short(iso)} already has ${S.maxPerDay} sessions. Two is the most a day holds.`);
     }
 
+    function restWeekToast(iso) {
+      toast('That’s the rest week', `${dt.short(iso)} is in the week before ${dt.short(S.peakDate(c))}, which ` +
+        `prescribes nothing at all. Log whatever actually happens there — but nothing gets planned into it.`);
+    }
+
     /* move + animate, shared by drag and keyboard.
 
        `index` is a position within the destination day — null appends,
@@ -115,6 +120,7 @@
       const slot = c.slots.find(s => s.id === slotId);
       const fromISO = slot ? slot.date : null;
       if (fromISO !== toISO && S.dayIsFull(c, toISO, slotId)) { dayFullToast(toISO); return false; }
+      if (fromISO !== toISO && slot && !slot.sessionId && S.restWeekHolds(c, toISO)) { restWeekToast(toISO); return false; }
       if (before === undefined) before = hasFlip ? Flip.getState(CT.ui.$$('.slot', shell)) : null;
       if (!S.placeSlot(c, slotId, toISO, index)) return false;
       render();
@@ -285,28 +291,13 @@
       const whose = S.whose(c), Whose = S.Whose(c);
 
       /* An empty week inside the block looks exactly like an empty week
-         outside one, and the difference is the whole point of it.
-
-         It is not always empty. A block built before the rest week
-         existed has sessions planned right through its final week, and
-         they are left where they are — old plans are migrated on read,
-         never rewritten out from under the athlete. So the line says
-         which of the two situations this is rather than insisting on
-         the tidy one. */
-      if (planned && S.isRestWeek(c, week)) {
-        const left = S.slotsInWeek(c, week).filter(s => !s.sessionId).length;
-        shell.appendChild(el('div', { class: 'nudge' }, [
-          icon('info'),
-          el('p', { html: left
-            ? `The rest week before <b>${dt.short(S.peakDate(c))}</b> — but ${left} ` +
-              `${left === 1 ? 'session is' : 'sessions are'} still planned in it, from before this was the ` +
-              `rest week. Nothing counts them and nothing goes wrong if they don’t happen; tap one to take ` +
-              `it out of the plan.`
-            : `The rest week. Nothing is prescribed — that <i>is</i> the prescription, with ` +
-              `<b>${dt.short(S.peakDate(c))}</b> on the other side of it. Log anything ` +
-              `${S.forOther(c) ? c.name + ' does anyway' : 'you do anyway'} — no target is going unmet here.` })
-        ]));
-      }
+         outside one, and the difference is the whole point of it. */
+      if (planned && S.isRestWeek(c, week)) shell.appendChild(el('div', { class: 'nudge' }, [
+        icon('info'),
+        el('p', { html: `The rest week. Nothing is prescribed — that <i>is</i> the prescription, with ` +
+          `<b>${dt.short(S.peakDate(c))}</b> on the other side of it. Log anything ` +
+          `${S.forOther(c) ? c.name + ' does anyway' : 'you do anyway'} — no target is going unmet here.` })
+      ]));
 
       if (!planned) shell.appendChild(el('div', { class: 'nudge' }, [
         icon('info'),

@@ -148,12 +148,22 @@ looks exactly like an empty week outside one, and the difference is the
 whole point. Logging still works: an athlete who goes climbing in their
 rest week went climbing, and it lands on the record like anything else.
 
-A block built before any of this has sessions planned right through its
-final week, and they stay there — old plans are migrated on read, never
-rewritten out from under the athlete. That week reads as the rest week,
-nothing counts those sessions any more, and the Plan screen says which
-of the two situations it is rather than insisting on the tidy one. Moving
-the peak, or removing them by hand, clears it.
+**Nothing is ever planned into it, and anything already there goes.**
+Two things put sessions in a rest week: a block built before the rest
+week existed has its final week laid out like every other, and pulling a
+peak in turns a week that was full of work into the rest. Neither is the
+coach's doing and neither is theirs to tidy up, so the suggestions are
+swept — on load, and after every move of the peak. Unlogged ones only: a
+session that actually happened that week happened, and the slot holding
+it is the record of it.
+
+Planning into it is refused the way a full day is refused. Tapping a
+rest-week day opens a sheet saying so instead of a picker that would
+turn down all four choices, and an unlogged session dragged onto one
+bounces with the same explanation. This governs the planner and only the
+planner — **logging is untouched**. Whatever actually happens that week
+still goes on the record and lands on the calendar, which is the same
+rule as everywhere else in the app: a block is a plan, not a fence.
 
 **Peaks on** — on the Clients screen, beside the weekly targets, for
 every athlete and for the coach's own record. It holds the Monday the
@@ -171,12 +181,15 @@ wearing each other, so it measures them and keeps every Nth — never the
 one you're standing in.
 
 Moving it re-fits the plan the way changing a weekly target does: only
-unlogged sessions from the current week onwards move, so history stays
-put and a week somebody has already dragged into shape keeps that shape.
-Weeks the block has grown into are laid out from the athlete's own
-template — the days their coach picked, not wherever there was room.
-Weeks that fall off the far end lose their suggestions and keep their
-sessions. Nothing logged is ever unlogged by a date moving.
+unlogged sessions from the current week onwards are moved or added, so
+history stays put and a week somebody has already dragged into shape
+keeps that shape. Weeks the block has grown into are laid out from the
+athlete's own template — the days their coach picked, not wherever there
+was room. Weeks that fall off the far end lose their suggestions and keep
+their sessions. The rest week is the exception to "from here on": it is
+emptied wherever it lands, past weeks included, because a plan for a week
+that is now rest isn't history, it's a prescription that's been
+withdrawn. Nothing logged is ever unlogged by a date moving.
 
 **Which week is which phase is never stored.** It is derived from the
 length, every time it is asked, which is what makes the end date safe to

@@ -135,6 +135,13 @@
     peFromWeek(c) { return CT.BLOCK.peFromWeek(c.block.weeks); },
     restFromWeek(c) { return CT.BLOCK.deloadFromWeek(c.block.weeks); },
     isRestWeek(c, w) { return w >= S.restFromWeek(c) && w <= c.block.weeks; },
+    /* Whether a date belongs to the rest week. Asked of the date rather
+       than of the week index because `weekOf` clamps into the block, and
+       a day after the block has ended would otherwise come back as the
+       rest week's — it isn't; it is outside the plan entirely. */
+    restWeekHolds(c, iso) {
+      return iso >= c.block.start && iso <= c.block.end && S.isRestWeek(c, S.weekOf(c, iso));
+    },
     /* The Monday the block is aimed at — the day after it ends, never a
        day inside it. */
     peakDate(c) { return CT.BLOCK.peakAfter(c.block.end); },
@@ -145,6 +152,30 @@
     },
     phase(c) { return S.phaseOfWeek(c, S.currentWeek(c)); },
     inPEPhase(c) { return S.phase(c) === 'Power Endurance'; },
+
+    /* The rest week holds no suggestions, ever — not because the week
+       is a fence, but because an empty week *is* the prescription and a
+       week with four sessions sitting in it says the opposite.
+
+       Two things put them there. A block built before the rest week
+       existed has its final week planned out like any other, and moving
+       a peak turns a week that was full of work into the rest. Neither
+       is the coach's doing, and neither is theirs to tidy up by hand,
+       so this runs on load and after every move rather than leaving a
+       mess for somebody to find.
+
+       Only ever unlogged ones. A session that actually happened in the
+       rest week happened, and the slot holding it is the record of that
+       — this clears the plan, never the history. */
+    clearRestWeek(c) {
+      if (!c || !c.block || !c.slots) return 0;
+      const gone = c.slots.filter(s => !s.sessionId && S.restWeekHolds(c, s.date));
+      gone.forEach(s => {
+        c.slots.splice(c.slots.indexOf(s), 1);
+        CT.repo.deleteSlot(c, s.id);
+      });
+      return gone.length;
+    },
 
     /* What the plan asks for in a given week, by type. One question with
        one answer, because three screens and the target editor were each
@@ -538,6 +569,10 @@
       if (!slot) return false;
       const fromISO = slot.date;
       if (fromISO !== toISO && S.dayIsFull(c, toISO, slotId)) return false;
+      /* An unlogged one can't be dropped into the rest week either —
+         it would only be swept back out. A logged one carries a session
+         with it and moves wherever the session really happened. */
+      if (fromISO !== toISO && !slot.sessionId && S.restWeekHolds(c, toISO)) return false;
 
       slot.date = toISO;
       slot.week = S.weekOf(c, toISO);
@@ -578,6 +613,11 @@
        nothing to log until the session has actually happened. */
     addPlannedSlot(c, iso, type) {
       if (S.dayIsFull(c, iso)) return null;
+      /* Same kind of refusal as a full day, and the same kind only: it
+         governs the planner, never the log. `logSession` builds its own
+         slot and doesn't come through here, so a session actually done
+         in the rest week still lands on the calendar. */
+      if (S.restWeekHolds(c, iso)) return null;
       const slot = { id: CT.repo.newId(c.id, 'slots'), week: S.weekOf(c, iso),
                      type, date: iso, status: 'suggested', sessionId: null,
                      /* Last in the day it lands on — a session added to a
@@ -630,20 +670,25 @@
        Everything downstream follows — the phase is derived from the
        length, so pulling the peak two weeks in re-reads which weeks are
        power endurance and which is the rest, and the plan is re-fitted
-       to match. Only unlogged slots from the current week on move, the
-       same rule a target change follows: history is history, and a week
-       somebody has already dragged into shape stays that shape.
+       to match. Only unlogged slots from the current week on are moved
+       or added, the same rule a target change follows: history is
+       history, and a week somebody has already dragged into shape stays
+       that shape.
 
-       Weeks that fall off the far end lose their suggestions and keep
-       their sessions. A block is a plan, not a fence — nothing logged is
-       ever unlogged by a date moving. */
+       The rest week is the exception, and it is emptied wherever it
+       lands. Pulling a peak in makes a week that is already behind them
+       the rest week, and a plan sitting in one is not history — it is a
+       prescription that has been withdrawn.
+
+       Nothing logged is ever unlogged by a date moving. A block is a
+       plan, not a fence: sessions on days the block no longer covers
+       stay exactly where they are, on the record and in the loads. */
     setPeak(c, peakISO) {
       const weeks = CT.BLOCK.weeksTo(c.block.start, peakISO);
       if (!(weeks >= CT.BLOCK.minWeeks && weeks <= CT.BLOCK.maxWeeks)) return null;
       if (dt.diff(peakISO, c.block.start) % 7 !== 0) return null;   // must be a Monday of the block
       if (weeks === c.block.weeks) return null;
 
-      const was = c.block.weeks;
       c.block.weeks = weeks;
       c.block.end = CT.BLOCK.endBefore(peakISO);
       /* No longer derived from, and no longer written — but an old
@@ -651,24 +696,32 @@
          dates it disagrees with is worth clearing on the way past. */
       delete c.block.peFromWeek;
 
-      /* Every week that could have changed shape: the ones still in the
-         block from here on, plus the ones that just left it. */
-      const last = Math.max(was, weeks);
-      for (let w = S.currentWeek(c); w <= last; w++) {
-        if (w > weeks) {
-          c.slots.filter(s => s.week === w && !s.sessionId).forEach(spare => {
-            c.slots.splice(c.slots.indexOf(spare), 1);
-            CT.repo.deleteSlot(c, spare.id);
-          });
-          continue;
-        }
+      /* Suggestions past the new last day have nothing left to belong
+         to. By date, not by the week number they were born with, which
+         is the thing about to be resettled. */
+      c.slots.filter(sl => !sl.sessionId && sl.date > c.block.end).forEach(spare => {
+        c.slots.splice(c.slots.indexOf(spare), 1);
+        CT.repo.deleteSlot(c, spare.id);
+      });
+
+      /* A slot carries the week it sits in, and moving the end of the
+         block moves some of them. Settled once, here, so the fitting
+         below and every reader afterwards are asking the same question
+         of the same numbers. */
+      c.slots.forEach(sl => {
+        const w = S.weekOf(c, sl.date);
+        if (sl.week !== w) { sl.week = w; CT.repo.saveSlot(c, sl); }
+      });
+
+      for (let w = S.currentWeek(c); w <= weeks; w++) {
         /* A week the block has only just grown into has nothing in it,
            so it is laid out from the template — the days the coach
            picked, not wherever the spreader happens to find room. */
-        if (!S.isRestWeek(c, w) && !c.slots.some(s => s.week === w)) S._templateWeek(c, w);
+        if (!S.isRestWeek(c, w) && !c.slots.some(sl => sl.week === w)) S._templateWeek(c, w);
         ['strength', 'endurance', 'pe'].forEach(key => S._fitWeek(c, w, key));
       }
 
+      S.clearRestWeek(c);
       CT.repo.saveAthlete(c, { block: c.block });
       return weeks;
     },

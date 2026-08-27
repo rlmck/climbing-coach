@@ -157,6 +157,14 @@
 
     CT.world.clients[athleteId] = client;
     S.recomputeStrength(client);
+
+    /* The rest week holds no suggestions. A block built before it
+       existed has its final week planned out like every other, and
+       nobody should have to find those and remove them by hand — so
+       they go on the way in, once, and the next snapshot arrives with
+       nothing left to do. Unlogged ones only: a session done in that
+       week is history and stays. */
+    S.clearRestWeek(client);
   }
 
   function watchSub(athleteId, coll) {
