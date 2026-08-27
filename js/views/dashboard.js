@@ -296,16 +296,39 @@
       }).filter(Boolean);
       return parts.length ? parts.join(' · ') : 'Max hangs';
     }
-    const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
-    const f = ses.fields || {};
+    /* One session, however many pieces of work were in it. Each gets
+       its own phrase and they are joined — with a smaller share of the
+       line each when there are several, because the line is the same
+       width whatever went into the evening. */
+    const parts = CT.sessionParts(ses);
+    if (!parts.length) return CT.TYPE[ses.type].label;
+    const room = parts.length > 1 ? 1 : 3;
+
+    /* The effort is asked of the session rather than of each piece.
+       Two forms carry two answers and the honest one for a line with
+       room for a single number is the hardest of them. */
+    let rpe = null;
+    parts.forEach(part => {
+      const r = CT.rpeValue((part.fields || {}).rpe);
+      if (r != null && (rpe == null || r > rpe)) rpe = r;
+    });
+
+    return parts.map(part => CT.partPhrase(ses.type, part, room)).join(' + ')
+      + (rpe ? ' · RPE ' + rpe : '');
+  };
+
+  /* What one piece of work was, in `room` details or fewer. */
+  CT.partPhrase = function (type, part, room) {
+    const mod = (CT.MODALITIES[type] || []).find(m => m.id === part.modality);
+    const f = part.fields || {};
 
     /* which grade ladder this modality counts in, if it counts climbs */
-    const climbSpec = CT.climbs.specFor(ses.modality);
+    const climbSpec = CT.climbs.specFor(part.modality);
 
     /* "Hangboard" and "Edge pulls" are different exercises sharing one
        modality, so the style leads rather than the modality's name. */
     const head = f.style ? CT.choiceName('edgeStyle', f.style)
-               : mod ? mod.name : CT.TYPE[ses.type].label;
+               : mod ? mod.name : CT.TYPE[type].label;
 
     const bits = [];
     if (climbSpec && Array.isArray(f.climbs)) {
@@ -320,7 +343,10 @@
       if (s) bits.push(s);
     }
     if (f.metres) bits.push(CT.fmtMetres(f.metres));
-    if (f.grip) bits.push(CT.choiceName('grip', f.grip));
+    /* The grip leads on a piece of work that has one: two blocks of
+       edge pulls in a session are one on each, and "Edge pulls · Edge
+       pulls" would be the least useful line the card could carry. */
+    if (f.grip) bits.unshift(CT.choiceName('grip', f.grip));
     if (f.grade) bits.push(f.grade);
     if (f.load) bits.push(f.load + ' kg');
     if (f.sets) bits.push(f.sets + ' sets');
@@ -331,9 +357,6 @@
     if (rounds) bits.push(rounds);
     if (f.durationSec) bits.push(CT.fmtDuration(f.durationSec));
 
-    /* effort is the one field worth keeping whatever else got trimmed */
-    const rpe = CT.rpeValue(f.rpe);
-    return [head].concat(bits.filter(Boolean).slice(0, 3))
-      .concat(rpe ? ['RPE ' + rpe] : []).join(' · ');
+    return [head].concat(bits.filter(Boolean).slice(0, room)).join(' · ');
   };
 })();

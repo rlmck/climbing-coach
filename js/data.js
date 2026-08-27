@@ -189,8 +189,10 @@
     ],
     /* Which of the two the session was, because the grades are two
        different ladders and a number off the wrong one is worse than no
-       number at all. A day that was genuinely both is two logs — which
-       is also the truthful answer, since they were two sessions. */
+       number at all. A day that was genuinely both is one session with
+       one of each in it — the ladders stay apart because each piece of
+       work carries its own, which is what kept them apart when this
+       had to be logged twice. */
     climbing: [
       { id:'climbRoutes',  name:'Routes',     desc:'Ropes — sport, trad, top rope' },
       { id:'climbBoulder', name:'Bouldering', desc:'Problems, indoors or out' }
@@ -332,6 +334,35 @@
      `label` for that reason — `hardest` is the exception, and it is
      the exception on purpose, because a row with no rung is precisely
      a row that shouldn't win a comparison. */
+  /* ── what a session was made of ───────────────────────────
+     One trip to the wall is one session. Ten rounds of intervals
+     followed by twenty minutes of traversing is one session with two
+     pieces of work in it — and it used to have to be logged as two,
+     which then ate two of the week's endurance target for one evening's
+     training. So a session carries a list.
+
+     `parts` is the shape. Sessions written before it exists carry a
+     single `modality` and `fields` at the top level, and read back here
+     as a list of one — migrated on read like everything else, never
+     rewritten, and re-saved in the new shape only if somebody edits
+     one. Strength is not in this at all: a hangboard session has reps
+     per grip rather than a modality, and its own shape already. */
+  CT.sessionParts = function (ses) {
+    if (!ses) return [];
+    if (Array.isArray(ses.parts)) return ses.parts;
+    if (ses.modality) return [{ modality: ses.modality, fields: ses.fields || {} }];
+    return [];
+  };
+
+  /* The modalities a session touched, in order, without repeats — what
+     names it on a card or a day cell. Two blocks of edge pulls on
+     different grips is one name, not the same name twice. */
+  CT.sessionModalities = function (ses) {
+    const out = [];
+    CT.sessionParts(ses).forEach(p => { if (p.modality && out.indexOf(p.modality) < 0) out.push(p.modality); });
+    return out;
+  };
+
   CT.climbs = {
     /* Which climbs a modality's form keeps, and on which ladder —
        one reading of the FORMS tuple, because two of them drift. The
@@ -349,12 +380,22 @@
        retired. Rows are copied rather than scaled in place, because
        what somebody recorded stays recorded. */
     rowsOf(ses) {
-      const found = CT.climbs.specFor(ses && ses.modality);
-      const f = (ses && ses.fields) || {};
-      if (!found || !Array.isArray(f.climbs)) return null;
-      const n = found.sets && typeof f[found.sets] === 'number' && f[found.sets] > 0 ? f[found.sets] : 1;
-      return { set: found.set, rows: n === 1 ? f.climbs
-        : f.climbs.map(r => Object.assign({}, r, { count: (r.count || 0) * n })) };
+      /* Per part, because a session can hold more than one and only
+         some of them count climbs. Grouped by ladder rather than
+         concatenated: a route grade and a boulder grade are not
+         comparable, and the callers ask "hardest" of one ladder. */
+      const bySet = {};
+      CT.sessionParts(ses).forEach(part => {
+        const found = CT.climbs.specFor(part.modality);
+        const f = part.fields || {};
+        if (!found || !Array.isArray(f.climbs)) return;
+        const n = found.sets && typeof f[found.sets] === 'number' && f[found.sets] > 0 ? f[found.sets] : 1;
+        const rows = n === 1 ? f.climbs
+          : f.climbs.map(r => Object.assign({}, r, { count: (r.count || 0) * n }));
+        (bySet[found.set] || (bySet[found.set] = [])).push(...rows);
+      });
+      const sets = Object.keys(bySet);
+      return sets.length ? sets.map(set => ({ set, rows: bySet[set] })) : null;
     },
     /* What this row says it was, in the words it was graded in. */
     label(row) {
@@ -578,12 +619,27 @@
   }
 
   CT.migrateSession = function (ses) {
-    if (!ses || ses.type === 'strength' || !ses.fields) return ses;
-    const fields = CT.migrateFields(ses.modality, ses.fields);
-    if (ses.modality === 'route4x4') {
-      return Object.assign({}, ses, { modality: 'routes', fields: retireRoute4x4(fields) });
-    }
-    return fields === ses.fields ? ses : Object.assign({}, ses, { fields });
+    if (!ses || ses.type === 'strength') return ses;
+    const was = CT.sessionParts(ses);
+    if (!was.length) return ses;
+
+    const parts = was.map(p => {
+      const fields = CT.migrateFields(p.modality, p.fields || {});
+      if (p.modality === 'route4x4') return { modality: 'routes', fields: retireRoute4x4(fields) };
+      return fields === p.fields ? p : { modality: p.modality, fields };
+    });
+
+    /* Nothing moved and it was already a list: hand back the same
+       object, so a snapshot that changed nothing changes nothing. */
+    if (Array.isArray(ses.parts) && parts.every((p, i) => p === ses.parts[i])) return ses;
+
+    /* Otherwise the single-modality pair is gone. Not rewritten in the
+       database — this is the shape every screen downstream sees, and
+       the document only catches up if the session is edited and saved. */
+    const out = Object.assign({}, ses, { parts });
+    delete out.modality;
+    delete out.fields;
+    return out;
   };
 
   /* ═══════════════════════════════════════════════════════
@@ -801,12 +857,30 @@
       return fields;
     }
 
-    /* One session against a slot, in whatever modality the type offers. */
+    /* One session against a slot. Usually one piece of work, and every
+       so often two — an evening of intervals and then traversing, or
+       edge pulls on both grips. The mock world has to carry those or
+       the screens that have to fit two of them never meet one. */
     function fill(slot) {
       const list = CT.MODALITIES[slot.type];
       const mod = list[Math.floor(rand() * list.length)];
-      const ses = { id: uid('ses'), date: slot.date, type: slot.type,
-                    modality: mod.id, fields: fieldsFor(mod.id), notes:'' };
+      const parts = [{ modality: mod.id, fields: fieldsFor(mod.id) }];
+
+      if (rand() < 0.22) {
+        /* Edge pulls come back as edge pulls on the other grip, which
+           is how they are actually done; anything else pairs with
+           something different. */
+        const again = mod.id === 'edgepulls'
+          ? mod
+          : list.filter(m => m.id !== mod.id)[Math.floor(rand() * (list.length - 1))];
+        const fields = fieldsFor(again.id);
+        if (again.id === mod.id && fields.grip) {
+          fields.grip = (CT.CHOICES.grip.find(g => g.id !== parts[0].fields.grip) || {}).id || fields.grip;
+        }
+        parts.push({ modality: again.id, fields });
+      }
+
+      const ses = { id: uid('ses'), date: slot.date, type: slot.type, parts, notes:'' };
       sessions.push(ses); slot.sessionId = ses.id;
     }
 

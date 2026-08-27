@@ -63,7 +63,12 @@
       bd.venues[0] + (bd.venues.length > 1 ? ' +' + (bd.venues.length - 1) : '')));
 
     return el('div', { style: 'margin-top:12px' }, [
-      el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` }),
+      el('p', { class: 'eyebrow', text: `${s.label} — ${bd.total} ${bd.total === 1 ? 'session' : 'sessions'}` +
+        /* The table below counts pieces of work, and a session can hold
+           more than one — so when the two numbers differ, the eyebrow
+           says why rather than leaving a table that doesn't add up to
+           the number above it. */
+        (bd.pieces > bd.total ? ` · ${bd.pieces} pieces of work` : '') }),
       stats.length ? el('div', { class: 'cfstats', style: 'margin-top:14px;padding-top:0;border-top:none' }, stats) : null,
       bd.rows.length
         ? el('table', { class: 'table table--rows', style: 'margin-top:16px' }, [

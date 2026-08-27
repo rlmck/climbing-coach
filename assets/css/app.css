@@ -516,6 +516,12 @@ textarea.input{ height:auto; padding:10px 12px; resize:vertical; min-height:72px
 .ribbon__legend span{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--ink-3); }
 .ribbon__legend i{ width:16px; height:5px; border-radius:3px; display:block; }
 
+/* One block of work inside a session sheet. A session can be several,
+   and the rule between them is what says "and then" rather than "or". */
+.logpart + .logpart{ margin-top:20px; padding-top:20px; border-top:1px solid var(--line); }
+.logpart__hd{ display:flex; align-items:center; gap:10px; margin-bottom:10px; min-height:24px; }
+.logpart__hd .eyebrow{ margin:0; }
+
 /* readouts */
 .readout{ display:flex; align-items:baseline; gap:5px; }
 .readout__n{ font-size:34px; font-weight:600; letter-spacing:-.038em; font-variant-numeric:tabular-nums; line-height:1; }

@@ -512,6 +512,11 @@
       if (!ses) return null;
       const movedTo = patch.date && patch.date !== ses.date ? patch.date : null;
       Object.assign(ses, patch);
+      /* A session saved as a list of parts has no single modality left
+         to carry. One written before parts existed still has the pair
+         on it — read as a list of one, and dropped here so the record
+         that goes back has one answer on it rather than two. */
+      if (patch.parts) { delete ses.modality; delete ses.fields; }
 
       const slot = c.slots.find(s => s.sessionId === id);
       if (slot && movedTo) { slot.date = movedTo; slot.week = S.weekOf(c, movedTo); }
@@ -809,7 +814,7 @@
 
       const includeTypes = type === 'endurance' ? ['endurance', 'climbing'] : [type];
       const groups = {};
-      let total = 0, metres = 0, durationSec = 0, rpeSum = 0, rpeCount = 0;
+      let total = 0, pieces = 0, metres = 0, durationSec = 0, rpeSum = 0, rpeCount = 0;
       const bySet = {};
       for (let w = 1; w <= c.block.weeks; w++) {
         S.slotsInWeek(c, w).forEach(slot => {
@@ -817,23 +822,34 @@
           const ses = S.session(c, slot.sessionId);
           if (!ses) return;
           const fromClimbing = slot.type === 'climbing';
-          const modKey = ses.modality || 'other';
-          const mod = (CT.MODALITIES[slot.type] || []).find(x => x.id === modKey);
-          const key = (fromClimbing ? 'climb:' : '') + modKey;
-          if (!groups[key]) groups[key] = { label: (fromClimbing ? 'Climb — ' : '') + (mod ? mod.name : 'Other'), count: 0 };
-          groups[key].count++;
           total++;
-          const f = ses.fields || {};
-          /* The distance box is optional and a blank one is not a
-             zero — but a session whose rows came out of the guidebook
-             knows how far it went whether or not anybody typed it, and
-             a block total that counted only the typed ones would read
-             as the honest sum of both. */
-          if (typeof f.metres === 'number') metres += f.metres;
-          else if (Array.isArray(f.climbs)) metres += CT.climbs.metres(f.climbs);
-          if (typeof f.durationSec === 'number') durationSec += f.durationSec;
-          const r = CT.rpeValue(f.rpe);
-          if (r != null) { rpeSum += r; rpeCount++; }
+
+          /* One row per piece of work, not per session. A session that
+             was intervals and then traversing did both, and a table
+             that credited it to whichever came first would be hiding
+             half the block. So `total` counts sessions and the rows
+             count what was in them, and `pieces` says when those two
+             numbers aren't the same — see modalityDrill. */
+          CT.sessionParts(ses).forEach(part => {
+            const modKey = part.modality || 'other';
+            const mod = (CT.MODALITIES[slot.type] || []).find(x => x.id === modKey);
+            const key = (fromClimbing ? 'climb:' : '') + modKey;
+            if (!groups[key]) groups[key] = { label: (fromClimbing ? 'Climb — ' : '') + (mod ? mod.name : 'Other'), count: 0 };
+            groups[key].count++;
+            pieces++;
+
+            const f = part.fields || {};
+            /* The distance box is optional and a blank one is not a
+               zero — but a session whose rows came out of the guidebook
+               knows how far it went whether or not anybody typed it,
+               and a block total that counted only the typed ones would
+               read as the honest sum of both. */
+            if (typeof f.metres === 'number') metres += f.metres;
+            else if (Array.isArray(f.climbs)) metres += CT.climbs.metres(f.climbs);
+            if (typeof f.durationSec === 'number') durationSec += f.durationSec;
+            const r = CT.rpeValue(f.rpe);
+            if (r != null) { rpeSum += r; rpeCount++; }
+          });
           /* Only the modalities that log a list of climbs (routes,
              boulder 4×4s, long problems, and both climbing styles)
              have anything to add here. Traversing and intervals do
@@ -842,8 +858,9 @@
              is not an ascent that should win "hardest". Kept apart by
              ladder for the same reason a route grade and a boulder
              grade aren't the same "hardest" either. */
-          const climbed = CT.climbs.rowsOf(ses);
-          if (climbed) (bySet[climbed.set] || (bySet[climbed.set] = [])).push(...climbed.rows);
+          (CT.climbs.rowsOf(ses) || []).forEach(g => {
+            (bySet[g.set] || (bySet[g.set] = [])).push(...g.rows);
+          });
         });
       }
       const rows = Object.keys(groups)
@@ -851,7 +868,7 @@
         .sort((a, b) => b.count - a.count);
       const climbRows = Object.keys(bySet).reduce((a, k) => a.concat(bySet[k]), []);
       return {
-        kind: 'modality', total, rows, metres, durationSec,
+        kind: 'modality', total, pieces, rows, metres, durationSec,
         climbs: CT.climbs.total(climbRows),
         venues: CT.climbs.venues(climbRows),
         hardestRoute: CT.climbs.hardest(bySet.route, 'route'),

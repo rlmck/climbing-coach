@@ -821,32 +821,99 @@
     sync();
   };
 
+  /* ═══════════════ an endurance / PE / climbing session ═══════════════
+     One session, however many pieces of work were in it.
+
+     It used to be one modality and one form. An evening that was ten
+     rounds of intervals and then twenty minutes of traversing had to be
+     logged as two sessions, which then ate two of the week's endurance
+     target for one evening's training — the app counting exercises
+     where it meant to count trips to the wall. So the sheet holds a
+     list of blocks, each with its own picker and its own form, and the
+     whole list saves as one session against one slot.
+
+     Edge pulls are the same problem at a smaller scale. Nobody trains
+     one grip and stops, so a session is fifteen minutes on the drag and
+     fifteen on the half-crimp — two blocks, and the second opens
+     already set to the grip the first one didn't use. */
   CT.views.sessionLog = function (c, type, opts) {
     const editing = opts.sessionId ? S.session(c, opts.sessionId) : null;
     if (editing) type = editing.type;
     const mods = CT.MODALITIES[type];
     const T = CT.TYPE[type];
-    let modality = editing ? editing.modality : opts.modality || null;
-    const values = {};
+
+    /* Four is where a sheet stops being one. Nobody does five different
+       exercises in an evening and calls it a session, and a form that
+       scrolls further than that is a form nobody finishes. */
+    const MAX_PARTS = 4;
 
     let sheet = null;
     const dateBar = CT.dateBar(c, editing ? editing.date : opts.date, () => syncPhase());
-    const formHost = el('div', { style: 'display:none' });
+    const partsHost = el('div', {});
     const saveBtn = el('button', { class: 'btn btn--primary', disabled: true, onclick: save },
       [ icon('check'), editing ? 'Save changes' : 'Save session' ]);
     const summary = el('p', { class: 'sub', text: 'Pick what you did' });
 
-    const picker = el('div', { class: 'picker' }, mods.map(m =>
-      el('button', {
-        class: 'pick', 'aria-pressed': String(modality === m.id),
-        onclick: () => choose(m.id)
-      }, [
-        el('p', { class: 'pick__n', text: m.name }),
-        el('p', { class: 'pick__d', text: m.desc })
-      ])
-    ));
+    const addBtn = el('button', { class: 'btn btn--quiet btn--sm', style: 'margin-top:14px',
+      onclick: () => { addPart(null); syncAll(); } }, [ icon('plus'), 'Add another exercise' ]);
 
-    function choose(id) {
+    /* Session-level, and deliberately outside the blocks: the notes are
+       about the evening, not about the third thing in it. They also
+       used to live inside the form, which meant changing your mind
+       about the modality threw away whatever had been typed. */
+    const notesBox = el('textarea', { class: 'input', id: 'eNotes', text: editing ? editing.notes : '',
+      placeholder: type === 'pe' ? 'How the last set felt. Where it fell apart.'
+                 : type === 'climbing' ? 'Where you were, who with, what you got on.'
+                 : 'Terrain, partners, how it felt.' });
+
+    const parts = [];
+
+    /* ── one block of work ──────────────────────────────────
+       Its own picker, its own form, its own values. The picker keeps
+       exactly the meaning it always had: tapping a different one
+       changes what *this* block was, and never adds a second. */
+    function addPart(modality) {
+      const part = { modality: null, values: {} };
+
+      const head = el('p', { class: 'eyebrow' });
+      const rm = el('button', { class: 'btn btn--quiet btn--sm', style: 'margin-left:auto',
+        'aria-label': 'Remove this exercise', onclick: () => removePart(part) }, [ icon('minus') ]);
+
+      const picker = el('div', { class: 'picker' }, mods.map(m =>
+        el('button', {
+          class: 'pick', 'aria-pressed': 'false',
+          onclick: () => choose(part, m.id)
+        }, [
+          el('p', { class: 'pick__n', text: m.name }),
+          el('p', { class: 'pick__d', text: m.desc })
+        ])
+      ));
+
+      const formHost = el('div', { style: 'display:none' });
+
+      part.head = head;
+      part.rm = rm;
+      part.picker = picker;
+      part.formHost = formHost;
+      part.node = el('div', { class: 'logpart' }, [
+        el('div', { class: 'logpart__hd' }, [ head, rm ]),
+        picker, formHost
+      ]);
+
+      parts.push(part);
+      partsHost.appendChild(part.node);
+      if (modality) choose(part, modality);
+      return part;
+    }
+
+    function removePart(part) {
+      if (parts.length <= 1) return;
+      parts.splice(parts.indexOf(part), 1);
+      part.node.remove();
+      syncAll();
+    }
+
+    function choose(part, id) {
       /* Is the form still folded away? Asked of the node, because the
          thing that has to be undone is the node being hidden — and the
          proxy that used to stand in for it ("no modality picked yet")
@@ -855,22 +922,68 @@
          said "not the first time", the reveal was skipped, and the
          whole form stayed at display:none behind a picker with nothing
          under it. */
-      const folded = formHost.style.display === 'none';
-      modality = id;
-      [...picker.children].forEach((b, i) => b.setAttribute('aria-pressed', String(mods[i].id === id)));
-      buildForm();
-      summary.textContent = mods.find(m => m.id === id).name;
-      saveBtn.disabled = false;
-      if (folded) motion.collapse(formHost, true);
-      else if (motion.on) motion.enter(formHost, '.field');
+      const folded = part.formHost.style.display === 'none';
+      part.modality = id;
+      [...part.picker.children].forEach((b, i) => b.setAttribute('aria-pressed', String(mods[i].id === id)));
+      buildForm(part);
+      syncAll();
+      if (folded) motion.collapse(part.formHost, true);
+      else if (motion.on) motion.enter(part.formHost, '.field');
     }
 
-    function buildForm() {
+    /* What a block should open with when one above it was the same
+       exercise. A second lot of edge pulls is almost always the other
+       half of the first: same edge, same clock, other grip. So it opens
+       on what that one said and moves the grip along to one this
+       session hasn't used — one tap instead of six, with the load still
+       the athlete's to correct, because it usually differs by grip. */
+    function seedFrom(part) {
+      const at = parts.indexOf(part);
+      for (let i = at - 1; i >= 0; i--) {
+        if (parts[i].modality !== part.modality) continue;
+        const seed = Object.assign({}, parts[i].values);
+        if (seed.grip) {
+          const used = parts.slice(0, at).filter(p => p.modality === part.modality).map(p => p.values.grip);
+          const next = (CT.CHOICES.grip || []).map(g => g.id).find(id => used.indexOf(id) < 0);
+          if (next) seed.grip = next;
+        }
+        return seed;
+      }
+      return null;
+    }
+
+    /* Headings, the remove buttons and whether there is anything to
+       save all depend on how many blocks there are, so they are settled
+       in one place after every add, remove and choice. */
+    function syncAll() {
+      parts.forEach((p, i) => {
+        p.head.textContent = i === 0
+          ? (S.forOther(c) ? 'What ' + c.name + ' did' : 'What did you do')
+          : 'And then';
+        p.rm.style.display = parts.length > 1 ? '' : 'none';
+      });
+      const named = parts.filter(p => p.modality);
+      const ready = named.length === parts.length;
+      saveBtn.disabled = !parts.length || !ready;
+      summary.textContent = named.length
+        ? named.map(p => mods.find(m => m.id === p.modality).name).join(' + ')
+        : 'Pick what you did';
+      addBtn.style.display = parts.length >= MAX_PARTS ? 'none' : '';
+      addBtn.disabled = !ready;
+    }
+
+    function buildForm(part) {
+      const formHost = part.formHost, values = part.values;
       CT.ui.clear(formHost);
       Object.keys(values).forEach(k => delete values[k]);
       const grid = el('div', { class: 'formgrid' });
 
-      const prior = editing && editing.modality === modality ? editing.fields : null;
+      /* What this block opens with: what it already said if the sheet
+         is editing one, otherwise whatever a block of the same exercise
+         above it left for it, and the schema's defaults if it is the
+         first of its kind. */
+      const stored = editing ? CT.sessionParts(editing)[parts.indexOf(part)] : null;
+      const prior = stored && stored.modality === part.modality ? stored.fields : seedFrom(part);
 
       /* Only a field the athlete had already answered is carried over —
          an absent one falls back to the schema's default, and for the
@@ -900,7 +1013,7 @@
         tally.style.display = t ? '' : 'none';
       }
 
-      CT.FORMS[modality].forEach(([key, label, kind, def]) => {
+      CT.FORMS[part.modality].forEach(([key, label, kind, def]) => {
         const set = v => { values[key] = v; paintTally(); };
         const options = kind === 'select' ? String(def).split(',') : null;
         let init = options ? options[Math.floor(options.length / 2)] : def;
@@ -933,7 +1046,7 @@
           if (pendingMetres !== null) metresNode.auto(pendingMetres);
         } else if (kind === 'climbs') {
           wide = true;
-          control = climbsControl(def, init, set, { modality, onMetres: toMetres });
+          control = climbsControl(def, init, set, { modality: part.modality, onMetres: toMetres });
         } else {
           set(init);
           control = el('div', { class: 'row', style: 'gap:9px' }, [
@@ -953,27 +1066,23 @@
       formHost.appendChild(grid);
       paintTally();
       formHost.appendChild(tally);
-      formHost.appendChild(el('div', { class: 'field', style: 'margin-top:14px' }, [
-        el('label', { text: 'Notes' }),
-        el('textarea', { class: 'input', id: 'eNotes', text: editing ? editing.notes : '',
-          placeholder: type === 'pe' ? 'How the last set felt. Where it fell apart.'
-                     : type === 'climbing' ? 'Where you were, who with, what you got on.'
-                     : 'Terrain, partners, how it felt.' })
-      ]));
     }
 
     function save() {
       const date = dateBar.get();
-      const notesEl = CT.ui.$('#eNotes', formHost);
-      const payload = { date, modality, fields: Object.assign({}, values),
-                        notes: notesEl ? notesEl.value.trim() : '' };
-
+      const payload = {
+        date,
+        parts: parts.filter(p => p.modality)
+                    .map(p => ({ modality: p.modality, fields: Object.assign({}, p.values) })),
+        notes: notesBox.value.trim()
+      };
+      const name = payload.parts.map(p => mods.find(m => m.id === p.modality).name).join(' + ');
       const who = S.forOther(c) ? c.name + ' · ' : '';
 
       if (editing) {
         S.updateSession(c, editing.id, payload);
         CT.sheet.close(); CT.render(false);
-        toast('Session updated', who + dt.short(date) + ' · ' + mods.find(m => m.id === modality).name);
+        toast('Session updated', who + dt.short(date) + ' · ' + name);
         return;
       }
 
@@ -981,18 +1090,22 @@
       S.logSession(c, Object.assign({ type }, payload));
       CT.sheet.close();
       toast(date === dt.iso(dt.today()) ? 'Logged' : 'Logged for ' + dt.short(date),
-            mods.find(m => m.id === modality).name + ` added to ${S.whose(c)} week.`);
+            /* One session, whatever went into it — said out loud, since
+               counting it as one is the whole of this change. */
+            payload.parts.length > 1
+              ? `${name} — one session in ${S.whose(c)} week.`
+              : `${name} added to ${S.whose(c)} week.`);
       CT.afterLog(c, before);
     }
 
     const body = el('div', { class: 'sheet__bd' }, [
       dateBar,
-      el('div', {}, [
-        el('p', { class: 'eyebrow', style: 'margin-bottom:10px',
-          text: S.forOther(c) ? `What ${c.name} did` : 'What did you do' }),
-        picker
-      ]),
-      formHost
+      partsHost,
+      addBtn,
+      el('div', { class: 'field', style: 'margin-top:18px' }, [
+        el('label', { text: 'Notes' }),
+        notesBox
+      ])
     ]);
 
     /* Power endurance in a week the plan doesn't schedule it is a
@@ -1029,6 +1142,12 @@
       ])
     });
 
-    if (modality) choose(modality);
+    /* Editing opens on what was logged, one block per piece of work.
+       Anything else opens on a single empty block, waiting on its
+       picker exactly as it always did. */
+    const opening = editing ? CT.sessionParts(editing) : [];
+    if (opening.length) opening.forEach(p => addPart(p.modality));
+    else addPart(opts.modality || null);
+    syncAll();
   };
 })();

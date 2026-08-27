@@ -236,13 +236,18 @@
         const planned = S.repCount(ses);
         return planned ? S.cleanCount(ses) + '/' + planned + ' clean' : 'Max hangs';
       }
-      /* a day cell is narrow, so the style beats the modality's name
+      /* A day cell is narrow. The style beats the modality's name
          wherever one was recorded — "Hangboard" says more than
-         "Hangboard / Edge Pulls" in the same width */
-      const f = ses.fields || {};
-      if (f.style) return CT.choiceName('edgeStyle', f.style) || 'Logged';
-      const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === ses.modality);
-      return mod ? mod.name : 'Logged';
+         "Hangboard / Edge Pulls" in the same width — and a session of
+         several pieces names the first and counts the rest, because
+         two names side by side fit nowhere and tell you less than one
+         name and a number. */
+      const parts = CT.sessionParts(ses);
+      if (!parts.length) return 'Logged';
+      const f = parts[0].fields || {};
+      const mod = (CT.MODALITIES[ses.type] || []).find(m => m.id === parts[0].modality);
+      const lead = (f.style ? CT.choiceName('edgeStyle', f.style) : null) || (mod ? mod.name : 'Logged');
+      return parts.length > 1 ? lead + ' +' + (parts.length - 1) : lead;
     }
 
     function render() {

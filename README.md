@@ -358,7 +358,39 @@ and the outstanding code is withdrawn, because there's nobody to give
 it to.
 
 **Endurance and power-endurance logs** — a modality picker, then a form
-built from `CT.FORMS`. What the forms ask for:
+built from `CT.FORMS`, and as many of those as the evening had in it.
+
+**One session, however many pieces of work were in it.** Ten rounds of
+intervals and then twenty minutes of traversing is one trip to the wall.
+It used to have to be logged as two sessions, which then ate two of the
+week's endurance target for one evening's training — the app counting
+exercises where it meant to count sessions. So a session carries a list:
+each block has its own picker and its own form, **"Add another
+exercise"** appends one, and the whole list saves against a single slot
+and fills a single target. Four blocks is the ceiling; a sheet that
+scrolls further than that is a sheet nobody finishes.
+
+The notes are session-level and sit under the blocks, because they are
+about the evening rather than about the third thing in it. (They also
+used to live inside the form, which meant changing your mind about the
+modality threw away whatever had been typed.)
+
+Stored as `parts: [{ modality, fields }]`. Sessions written before this
+carry a single `modality` and `fields` at the top level and are read
+back as a list of one — migrated on read like everything else, never
+rewritten, and re-saved in the new shape only if somebody edits one.
+Strength is not in this at all: a hangboard session has reps per grip
+rather than a modality, and its own shape already.
+
+A day cell names the first block and counts the rest — **"Intervals
++1"** — because two names side by side fit nowhere and say less than one
+name and a number. A history row gives each block a phrase and joins
+them with a `+`, with less of the line each when there are several, and
+takes the *hardest* of their efforts as the session's RPE. A drill-down
+counts pieces of work rather than sessions, and says so in its heading
+when the two numbers differ.
+
+What the forms ask for:
 
 *What you climbed.* A session is "2 × 6a, then 3 × 6a+, then 4 × 5c",
 not the hardest thing in it. Routes, boulder 4×4s and long problems
@@ -384,6 +416,15 @@ meaningless. Logged apart, and the style is what the history rows and
 day cells show. Both, and the 7:3 repeaters, also ask which grip —
 half-crimp or three-finger drag, the same pair the strength protocol
 runs on.
+
+Nobody trains one grip and stops. A session is fifteen minutes on the
+drag and fifteen on the half-crimp, which is **two blocks** of the same
+exercise — and the second opens on everything the first one said, with
+the grip moved along to the one the session hasn't used. Same edge, same
+clock, other grip: one tap instead of six, with the load left to be
+corrected, because it usually differs by grip. The grip leads the phrase
+on a history row for the same reason — "Edge pulls · Edge pulls" would
+be the least useful line a card could carry.
 
 *How long on, how long off.* **Intervals** was "1-on-1-off", and the
 protocol was welded into the label: the form asked for a round count
@@ -517,7 +558,8 @@ a presentation and never a loss.
 What a drill-down shows is whatever those sessions actually recorded and
 nothing beyond it. Endurance and PE get metres, time on the wall, total
 climbs, hardest route and hardest boulder, average effort, and the venues
-by name rather than by count. Strength has no modality, so it breaks down
+by name rather than by count — counted across every piece of work in
+those sessions, not just the first of each. Strength has no modality, so it breaks down
 by what it does vary by: clean rate and kilos gained per grip, plus a
 line for limit bouldering, which has no grip to report against.
 
@@ -612,7 +654,10 @@ athletes/{id}                    members[] — one entry per screen —
   …/slots/{id}                   week, type, date, order, sessionId
                                  — order is the position within its day,
                                  absent on anything never rearranged
-  …/sessions/{id}                date, type, mode, reps|problems|fields, notes
+  …/sessions/{id}                date, type, mode, reps|problems, notes,
+                                 parts[] — one { modality, fields } per
+                                 piece of work; older ones carry a
+                                 single modality/fields pair instead
   …/bodyweight/{yyyy-mm-dd}      one reading per day — the date is the key
   …/maxHang/{id}
   …/criticalForce/{id}           date, grip, bodyweight,
