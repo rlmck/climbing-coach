@@ -238,9 +238,13 @@ comes up into the hand; drop it on another day, or above or below the
 other session sharing its own. Rest-day guidance appears inline
 underneath and never blocks the move: drop a second Strength session
 within two days of the first, or bunch four training days together, and
-it says so. Jade's default week already trips one. Guidance about days
-that have already been trained through stays quiet — there's nothing left
-to act on.
+it says so. It counts through the week boundary, because fingers don't
+know where the grid ends: Strength on the Sunday and Strength again on
+the Monday is the same twenty-four hours whether or not a week divides
+them, so the pair shows on both weeks, with the day that isn't on this
+grid named by its date so it can't be read as the Sunday that is. Jade's
+default week already trips one. Guidance about days that have already
+been trained through stays quiet — there's nothing left to act on.
 
 The hold is the point. A tile that moved the instant a finger touched it
 could not share a screen with a week that scrolls — every attempt to

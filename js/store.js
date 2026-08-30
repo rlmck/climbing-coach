@@ -440,13 +440,28 @@
     /* ── rest-rule guidance (advisory only, never blocking) ── */
     /* All of this is advice about how to arrange training that is still
        ahead of you. Once the last day it concerns has been and gone there
-       is nothing left to act on, so it stays quiet. */
+       is nothing left to act on, so it stays quiet.
+
+       Fingers do not know where the week ends. Strength on the Sunday and
+       Strength again on the Monday is the same twenty-four hours whichever
+       grid the two are drawn on, so what is read here reaches a week either
+       side and the guidance is then filtered back to what actually
+       touches this one. A pair that straddles the boundary therefore
+       shows on both weeks, which is right: it is a real conflict seen from
+       two places, and the week you happen to be looking at is not the one
+       that decides whether your fingers get their rest. Days from a
+       neighbouring week are named with their date rather than just "Sun",
+       because the Sunday drawn on this grid is a different Sunday. */
     weekNudges(c, w) {
-      const slots = S.slotsInWeek(c, w);
+      const from = S.weekStart(c, w), to = dt.addISO(from, 6);
+      const near = c.slots.filter(s => s.date >= dt.addISO(from, -7) && s.date <= dt.addISO(to, 7))
+                          .sort((x,y) => x.date < y.date ? -1 : 1);
+      const inWeek = iso => iso >= from && iso <= to;
+      const day = iso => inWeek(iso) ? dt.dow(iso) : dt.short(iso);
+
       const out = [];
       const todayISO = dt.iso(dt.today());
-      const hard = slots.filter(s => s.type === 'strength' || s.type === 'pe')
-                        .sort((a,b) => a.date < b.date ? -1 : 1);
+      const hard = near.filter(s => s.type === 'strength' || s.type === 'pe');
 
       const rest = n => n === 1 ? '1 rest day' : n + ' rest days';
       for (let i = 1; i < hard.length; i++) {
@@ -454,24 +469,29 @@
         const gap = dt.diff(b.date, a.date) - 1;                    // full rest days between
         if (gap >= 2) continue;
         if (b.date < todayISO) continue;                            // already trained through
+        if (!inWeek(a.date) && !inWeek(b.date)) continue;           // wholly a neighbour's business
         if (a.type === 'strength' && b.type === 'strength') {
-          out.push({ tone:'warn', text:`Two <b>Strength</b> sessions on ${dt.dow(a.date)} and ${dt.dow(b.date)} — ${rest(gap)} between. Fingers usually want two.` });
+          out.push({ tone:'warn', text:`Two <b>Strength</b> sessions on ${day(a.date)} and ${day(b.date)} — ${rest(gap)} between. Fingers usually want two.` });
         } else if (gap < 1) {
-          out.push({ tone:'warn', text:`<b>${CT.TYPE[a.type].label}</b> and <b>${CT.TYPE[b.type].label}</b> back to back, ${dt.dow(a.date)} into ${dt.dow(b.date)}. Fine if you feel fresh — worth spacing if not.` });
+          out.push({ tone:'warn', text:`<b>${CT.TYPE[a.type].label}</b> and <b>${CT.TYPE[b.type].label}</b> back to back, ${day(a.date)} into ${day(b.date)}. Fine if you feel fresh — worth spacing if not.` });
         } else {
-          out.push({ tone:'info', text:`<b>${CT.TYPE[a.type].label}</b> ${dt.dow(a.date)} and <b>${CT.TYPE[b.type].label}</b> ${dt.dow(b.date)} — ${rest(gap)} between. Both lean on the same tissue.` });
+          out.push({ tone:'info', text:`<b>${CT.TYPE[a.type].label}</b> ${day(a.date)} and <b>${CT.TYPE[b.type].label}</b> ${day(b.date)} — ${rest(gap)} between. Both lean on the same tissue.` });
         }
       }
 
-      /* four or more consecutive training days */
-      const days = [...new Set(slots.map(s => s.date))].sort();
-      let run = 1, best = 1, from = days[0];
-      for (let i = 1; i < days.length; i++) {
-        if (dt.diff(days[i], days[i-1]) === 1) { run++; if (run > best) { best = run; from = days[i-run+1]; } }
-        else run = 1;
+      /* four or more consecutive training days, counted through the
+         boundary and reported by whichever week the run passes through */
+      const days = [...new Set(near.map(s => s.date))].sort();
+      let best = 0, runFrom = null;
+      for (let i = 0; i < days.length; ) {
+        let j = i;
+        while (j + 1 < days.length && dt.diff(days[j+1], days[j]) === 1) j++;
+        const len = j - i + 1;
+        if (days[i] <= to && days[j] >= from && len > best) { best = len; runFrom = days[i]; }
+        i = j + 1;
       }
-      if (best >= 4 && dt.addISO(from, best - 1) >= todayISO) {
-        out.push({ tone:'info', text:`<b>${best} training days in a row</b> from ${dt.dow(from)}. A rest day in the middle would land better.` });
+      if (best >= 4 && dt.addISO(runFrom, best - 1) >= todayISO) {
+        out.push({ tone:'info', text:`<b>${best} training days in a row</b> from ${day(runFrom)}. A rest day in the middle would land better.` });
       }
 
       return out.slice(0, 2);   // guidance, not a lecture
